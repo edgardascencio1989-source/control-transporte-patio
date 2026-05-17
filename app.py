@@ -18,7 +18,13 @@ zona_local = pytz.timezone('America/Santiago')
 @st.cache_resource(ttl=600)
 def conectar_google_sheets():
     try:
-        credentials_info = st.secrets["gspread"]
+        # Convertimos a diccionario para poder manipular el texto de la clave de forma segura
+        credentials_info = dict(st.secrets["gspread"])
+        
+        # SOLUCIÓN AL ERROR PEM: Corrige automáticamente los saltos de línea mal formateados en la nube
+        if "private_key" in credentials_info:
+            credentials_info["private_key"] = credentials_info["private_key"].replace("\\n", "\n")
+            
         scopes = [
             "https://www.googleapis.com/auth/spreadsheets",
             "https://www.googleapis.com/auth/drive"
@@ -55,9 +61,11 @@ def cargar_datos():
 df_global = cargar_datos()
 
 # ==============================================================================
-# ENLACES INTELIGENTES PARA OTROS PC (Soporte URL Query Params)
+# NAVEGACIÓN EN EL CUERPO PRINCIPAL (SIN BARRA LATERAL)
 # ==============================================================================
-# Permite que si alguien abre la URL con '?modulo=Despacho', la app cambie automáticamente
+st.title("🏢 Sistema de Control de Transportes - Patio")
+
+# Detectar si vienen parámetros desde el enlace para cambiar de módulo automáticamente
 query_params = st.query_params
 modulo_defecto = "Monitoreo General"
 
@@ -70,27 +78,19 @@ if "modulo" in query_params:
     elif "admin" in param_val:
         modulo_defecto = "Administrador / Estadísticas"
 
-# Menú de navegación en el lateral
-st.sidebar.title("Navegación del Patio")
-modulo_seleccionado = st.sidebar.radio(
-    "Seleccione el Módulo de Trabajo:",
-    ["Monitoreo General", "Logística Inversa", "Despacho", "Administrador / Estadísticas"],
-    index=["Monitoreo General", "Logística Inversa", "Despacho", "Administrador / Estadísticas"].index(modulo_defecto)
+# Selector de módulos principal centrado arriba
+opciones_modulos = ["Monitoreo General", "Logística Inversa", "Despacho", "Administrador / Estadísticas"]
+modulo_seleccionado = st.selectbox(
+    "📂 Seleccione el Módulo de Trabajo Actual:",
+    opciones_modulos,
+    index=opciones_modulos.index(modulo_defecto)
 )
 
-# Mostrar información de enlaces compartibles para otras PCs
-st.sidebar.markdown("---")
-st.sidebar.subheader("🔗 Enlaces para compartir con otras PCs:")
-url_base = "https://control-transporte-patio-2yrqptghztypbmdju8vnbq.streamlit.app"  # Tu link de producción
-st.sidebar.caption(f"**Logística Inversa:**\n{url_base}/?modulo=Logistica")
-st.sidebar.caption(f"**Despacho:**\n{url_base}/?modulo=Despacho")
-st.sidebar.caption(f"**Administrador:**\n{url_base}/?modulo=Admin")
+st.markdown("---")
 
 # ==============================================================================
 # DESARROLLO DE LOS MÓDULOS DE REGISTRO
 # ==============================================================================
-st.title(f"🏢 Sistema Patio - Módulo: {modulo_seleccionado}")
-
 if modulo_seleccionado in ["Logística Inversa", "Despacho"]:
     st.subheader(f"Formulario de Registro de Movimiento - {modulo_seleccionado}")
     
@@ -125,7 +125,7 @@ if modulo_seleccionado in ["Logística Inversa", "Despacho"]:
                     try:
                         sheet_conexion.append_row(nuevo_registro)
                         st.success(f"✅ ¡Registro guardado exitosamente en Google Sheets! Patente: {patente}")
-                        st.rerun() # Recarga la app para traer los datos nuevos
+                        st.rerun() 
                     except Exception as ex:
                         st.error(f"No se pudo guardar en la nube de Google: {ex}")
                 else:
@@ -134,11 +134,11 @@ if modulo_seleccionado in ["Logística Inversa", "Despacho"]:
                 st.warning("⚠️ Por favor rellene todos los campos obligatorios (Patente, Chofer y Empresa).")
 
 # ==============================================================================
-# MÓDULO MONITOREO GENERAL (Vistas de datos unificados en cualquier PC)
+# MÓDULO MONITOREO GENERAL (Vistas de datos unificados)
 # ==============================================================================
 elif modulo_seleccionado == "Monitoreo General":
     st.subheader("📋 Panel de Control de Patio en Tiempo Real")
-    st.write("Esta tabla sincroniza los registros ingresados desde cualquier dispositivo conectado a internet.")
+    st.write("Esta tabla sincroniza en tiempo real los datos ingresados desde cualquier dispositivo.")
     
     if not df_global.empty:
         st.dataframe(df_global, use_container_width=True)
@@ -146,7 +146,7 @@ elif modulo_seleccionado == "Monitoreo General":
         st.info("No hay registros guardados en la planilla aún.")
 
 # ==============================================================================
-# MÓDULO ADMINISTRADOR Y SOLUCIÓN DE PROMEDIOS (Punto 1)
+# MÓDULO ADMINISTRADOR Y TABLAS DE PROMEDIOS (Punto 1)
 # ==============================================================================
 elif modulo_seleccionado == "Administrador / Estadísticas":
     st.subheader("📊 Cuadro de Mando: Análisis de Promedios de Estadía")
@@ -189,3 +189,14 @@ elif modulo_seleccionado == "Administrador / Estadísticas":
         st.dataframe(df_filtrado, use_container_width=True)
     else:
         st.info("No hay datos suficientes en Google Sheets para calcular promedios estadísticos.")
+
+# ==============================================================================
+# CONTENEDOR DE ENLACES COMPARTIBLES AL FINAL DE LA PÁGINA
+# ==============================================================================
+st.markdown("---")
+with st.expander("🔗 Enlaces directos para compartir con otros PC"):
+    url_base = "https://control-transporte-patio-cyzw3qqhshcvvji8p7fsft.streamlit.app" # Tu URL actual de producción
+    st.write(f"Puedes copiar y enviar estos enlaces para que entren directamente al módulo correspondiente desde cualquier computador:")
+    st.code(f"Módulo Logística Inversa: {url_base}/?modulo=Logistica")
+    st.code(f"Módulo Despacho:           {url_base}/?modulo=Despacho")
+    st.code(f"Módulo Administrador:       {url_base}/?modulo=Admin")
