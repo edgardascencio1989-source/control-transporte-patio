@@ -240,4 +240,20 @@ if tab3:
             fila = st.session_state.df_activas[st.session_state.df_activas["Patente"] == patente_desp].iloc[0]
             
             if fila["Estado"] == "En Logística Inversa":
-                st.error("⛔ RESTRIC
+                # Alerta larga separada en líneas seguras para evitar SyntaxError
+                st.error(
+                    "⛔ RESTRICCIÓN ACTIVA: Este vehículo no ha registrado su SALIDA desde Logística "
+                    "Inversa (Módulo 2). El registro en Despacho está completamente bloqueado. "
+                    "(Si el equipo de Inversa ya le dio salida, actualiza la página o vuelve a seleccionarlo)."
+                )
+            
+            elif fila["Estado"] == "En Despacho (Cargando)":
+                st.info(f"✅ La patente {patente_desp} ya fue ingresada a Despacho exitosamente. Está en proceso de carga.")
+            
+            else:
+                with st.form("form_despacho_inner"):
+                    empresa_f = st.text_input("🏢 Empresa", value=fila["Empresa"]).upper().strip()
+                    chofer_f = st.text_input("👤 Nombre y apellido del Chofer", value=fila["Chofer"]).upper().strip()
+                    rut_f = st.text_input("🆔 RUT", value=fila["RUT"], max_chars=10).upper().strip()
+                    
+                    if st.form_submit_button("
