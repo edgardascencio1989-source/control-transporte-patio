@@ -122,6 +122,16 @@ def formatear_a_cronometro(minutos_decimales):
     segundos = total_segundos % 60
     return f"{horas:02d}:{minutos:02d}:{segundos:02d}"
 
+def cronometro_a_minutos(texto):
+    """Convierte HH:MM:SS a minutos decimales para sacar promedios matemáticos exactos"""
+    if pd.isna(texto) or texto in ["N/A", "No registra", ""]:
+        return 0.0
+    try:
+        partes = str(texto).split(":")
+        return int(partes[0]) * 60 + int(partes[1]) + int(partes[2]) / 60.0
+    except:
+        return 0.0
+
 # =====================================================================
 # DETECCIÓN DE ROL POR LINK (URL COMPARTIBLES)
 # =====================================================================
@@ -418,28 +428,40 @@ if tab5:
             st.markdown("---")
             
             st.subheader("📈 Estadía Promedio CD")
-            if "Minutos_Carga_Raw" in df_filtrado_kpis.columns:
+            
+            # CÁLCULO DE PROMEDIOS INDIVIDUALES Y TOTAL
+            if "T. Retorno (Descarga)" in df_filtrado_kpis.columns and "T. Despacho (Carga)" in df_filtrado_kpis.columns:
                 df_stats = df_filtrado_kpis.copy()
-                df_stats['Minutos_Carga_Raw'] = pd.to_numeric(df_stats['Minutos_Carga_Raw'], errors='coerce').fillna(0)
+                
+                # Transformar textos de Google Sheets a minutos matemáticos
+                df_stats['Min_Inv'] = df_stats['T. Retorno (Descarga)'].apply(cronometro_a_minutos)
+                df_stats['Min_Desp'] = df_stats['T. Despacho (Carga)'].apply(cronometro_a_minutos)
+                df_stats['Min_Total'] = df_stats['Min_Inv'] + df_stats['Min_Desp']
                 
                 c1, c2, c3 = st.columns(3)
                 with c1:
                     st.markdown("**Por Empresa**")
-                    df_emp = df_stats.groupby("Empresa")["Minutos_Carga_Raw"].mean().reset_index()
-                    df_emp["Tiempo Promedio"] = df_emp["Minutos_Carga_Raw"].apply(formatear_a_cronometro)
-                    st.dataframe(df_emp[["Empresa", "Tiempo Promedio"]], use_container_width=True)
+                    df_emp = df_stats.groupby("Empresa")[["Min_Inv", "Min_Desp", "Min_Total"]].mean().reset_index()
+                    df_emp["Promedio Inversa"] = df_emp["Min_Inv"].apply(formatear_a_cronometro)
+                    df_emp["Promedio Despacho"] = df_emp["Min_Desp"].apply(formatear_a_cronometro)
+                    df_emp["Promedio Total CD"] = df_emp["Min_Total"].apply(formatear_a_cronometro)
+                    st.dataframe(df_emp[["Empresa", "Promedio Inversa", "Promedio Despacho", "Promedio Total CD"]], use_container_width=True)
                 with c2:
                     st.markdown("**Por Chofer**")
-                    df_chof = df_stats.groupby("Chofer")["Minutos_Carga_Raw"].mean().reset_index()
-                    df_chof["Tiempo Promedio"] = df_chof["Minutos_Carga_Raw"].apply(formatear_a_cronometro)
-                    st.dataframe(df_chof[["Chofer", "Tiempo Promedio"]], use_container_width=True)
+                    df_chof = df_stats.groupby("Chofer")[["Min_Inv", "Min_Desp", "Min_Total"]].mean().reset_index()
+                    df_chof["Promedio Inversa"] = df_chof["Min_Inv"].apply(formatear_a_cronometro)
+                    df_chof["Promedio Despacho"] = df_chof["Min_Desp"].apply(formatear_a_cronometro)
+                    df_chof["Promedio Total CD"] = df_chof["Min_Total"].apply(formatear_a_cronometro)
+                    st.dataframe(df_chof[["Chofer", "Promedio Inversa", "Promedio Despacho", "Promedio Total CD"]], use_container_width=True)
                 with c3:
                     st.markdown("**Por Patente**")
-                    df_pat = df_stats.groupby("Patente")["Minutos_Carga_Raw"].mean().reset_index()
-                    df_pat["Tiempo Promedio"] = df_pat["Minutos_Carga_Raw"].apply(formatear_a_cronometro)
-                    st.dataframe(df_pat[["Patente", "Tiempo Promedio"]], use_container_width=True)
+                    df_pat = df_stats.groupby("Patente")[["Min_Inv", "Min_Desp", "Min_Total"]].mean().reset_index()
+                    df_pat["Promedio Inversa"] = df_pat["Min_Inv"].apply(formatear_a_cronometro)
+                    df_pat["Promedio Despacho"] = df_pat["Min_Desp"].apply(formatear_a_cronometro)
+                    df_pat["Promedio Total CD"] = df_pat["Min_Total"].apply(formatear_a_cronometro)
+                    st.dataframe(df_pat[["Patente", "Promedio Inversa", "Promedio Despacho", "Promedio Total CD"]], use_container_width=True)
             else:
-                st.error("⚠️ Error: No se encuentra la columna 'Minutos_Carga_Raw' en la planilla de Google Sheets.")
+                st.info("No hay suficientes datos de tiempo registrados para calcular promedios.")
         else:
             st.info("No hay datos históricos registrados en la planilla para aplicar filtros.")
 
