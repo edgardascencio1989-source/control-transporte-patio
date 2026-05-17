@@ -113,7 +113,7 @@ def formatear_a_cronometro(minutos_decimales):
 # =====================================================================
 st.title("🚚 Control de salidas e ingresos Transporte")
 
-# VISTA DE PESTAÑAS HORIZONTALES (Restaurado a tu diseño original)
+# VISTA DE PESTAÑAS HORIZONTALES (Diseño original)
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📥 1. Ingreso Logística Inversa", 
     "📤 2. Salida de Inversa", 
@@ -130,18 +130,20 @@ ahora_actual = datetime.datetime.now(zona_local)
 with tab1:
     st.header("📥 Registro de Ingreso a Logística Inversa")
     with st.form("form_ingreso_inversa", clear_on_submit=True):
-        patente_inv = st.text_input("🚚 Patente del Camión", max_chars=6).upper().strip()
+        patente_inv = st.text_input("🚚 Patente del Camión", max_chars=6, help="Largo exacto de 6 caracteres").upper().strip()
         empresa_inv = st.text_input("🏢 Empresa de Transporte").upper().strip()
         chofer_inv = st.text_input("👤 Nombre y apellido del Chofer").upper().strip()
-        rut_inv = st.text_input("🆔 RUT del Chofer", max_chars=10).upper().strip()
+        rut_inv = st.text_input("🆔 RUT del Chofer", max_chars=10, help="Mínimo 9 y máximo 10 caracteres").upper().strip()
         
         if st.form_submit_button("💾 Registrar Llegada a Inversa"):
             if not patente_inv or not empresa_inv or not chofer_inv or not rut_inv:
                 st.error("❌ Todos los campos son obligatorios.")
             elif len(patente_inv) != 6:
-                st.error("❌ La patente debe tener exactamente 6 caracteres.")
+                st.error(f"❌ La patente ingresada tiene {len(patente_inv)} caracteres. Debe tener exactamente 6 caracteres.")
+            elif len(rut_inv) < 9 or len(rut_inv) > 10:
+                st.error(f"❌ El RUT ingresado tiene {len(rut_inv)} caracteres. Debe tener un mínimo de 9 y un máximo de 10 caracteres.")
             elif not st.session_state.df_activas.empty and patente_inv in st.session_state.df_activas["Patente"].values:
-                st.warning("⚠️ Esta patente ya está en el patio.")
+                st.warning("⚠️ Esta patente ya registra una operación activa en patio.")
             else:
                 nuevo_registro = pd.DataFrame([{
                     "Patente": patente_inv, "Empresa": empresa_inv, "Chofer": chofer_inv, "RUT": rut_inv,
@@ -180,30 +182,33 @@ with tab3:
     st.header("📦 Registro de Ingreso a Despacho")
     lista_espera = st.session_state.df_activas[st.session_state.df_activas["Estado"] == "Esperando Despacho"]["Patente"].tolist() if not st.session_state.df_activas.empty else []
     
-    patente_desp = st.selectbox("Buscar Patente:", [""] + lista_espera).upper().strip()
+    patente_desp = st.selectbox("Buscar Patente en Espera:", [""] + lista_espera).upper().strip()
     
     if patente_desp:
         fila = st.session_state.df_activas[st.session_state.df_activas["Patente"] == patente_desp].iloc[0]
         with st.form(f"form_despacho_{st.session_state.limpiar_despacho}"):
             empresa_f = st.text_input("🏢 Empresa", value=fila["Empresa"]).upper().strip()
-            chofer_f = st.text_input("👤 Chofer", value=fila["Chofer"]).upper().strip()
-            rut_f = st.text_input("🆔 RUT", value=fila["RUT"]).upper().strip()
+            chofer_f = st.text_input("👤 Nombre y apellido del Chofer", value=fila["Chofer"]).upper().strip()
+            rut_f = st.text_input("🆔 RUT", value=fila["RUT"], max_chars=10).upper().strip()
             
             if st.form_submit_button("📥 Registrar Entrada a Carga"):
-                idx = st.session_state.df_activas[st.session_state.df_activas["Patente"] == patente_desp].index[0]
-                st.session_state.df_activas.at[idx, "Empresa"] = empresa_f
-                st.session_state.df_activas.at[idx, "Chofer"] = chofer_f
-                st.session_state.df_activas.at[idx, "RUT"] = rut_f
-                st.session_state.df_activas.at[idx, "H3_Llegada_Despacho"] = ahora_actual.isoformat()
-                st.session_state.df_activas.at[idx, "Estado"] = "En Despacho (Cargando)"
-                guardar_datos_cloud(st.session_state.df_activas, "patentes_activas")
-                st.success("✅ Posicionado en Despacho.")
-                st.session_state.limpiar_despacho += 1
-                time.sleep(1)
-                st.rerun()
+                if len(rut_f) < 9 or len(rut_f) > 10:
+                    st.error(f"❌ El RUT debe tener entre 9 y 10 caracteres (Tiene {len(rut_f)}).")
+                else:
+                    idx = st.session_state.df_activas[st.session_state.df_activas["Patente"] == patente_desp].index[0]
+                    st.session_state.df_activas.at[idx, "Empresa"] = empresa_f
+                    st.session_state.df_activas.at[idx, "Chofer"] = chofer_f
+                    st.session_state.df_activas.at[idx, "RUT"] = rut_f
+                    st.session_state.df_activas.at[idx, "H3_Llegada_Despacho"] = ahora_actual.isoformat()
+                    st.session_state.df_activas.at[idx, "Estado"] = "En Despacho (Cargando)"
+                    guardar_datos_cloud(st.session_state.df_activas, "patentes_activas")
+                    st.success("✅ Posicionado en Despacho.")
+                    st.session_state.limpiar_despacho += 1
+                    time.sleep(1)
+                    st.rerun()
 
 # =====================================================================
-# PESTAÑA 4: SALIDA DESPACHO (FINALIZA CICLO)
+# PESTAÑA 4: SALIDA DESPACHO
 # =====================================================================
 with tab4:
     st.header("🚪 Control de Salida Despacho")
@@ -236,13 +241,12 @@ with tab4:
                     "Ingreso Despacho": h3.strftime('%H:%M:%S'), "Salida Despacho": h4.strftime('%H:%M:%S'),
                     "T. Retorno (Descarga)": formatear_a_cronometro(t_retorno) if t_retorno is not None else "N/A",
                     "T. Despacho (Carga)": formatear_a_cronometro(t_carga),
-                    "Minutos_Carga_Raw": t_carga # Dato oculto para promedios
+                    "Minutos_Carga_Raw": t_carga
                 }])
                 
                 st.session_state.df_historial = pd.concat([st.session_state.df_historial, nuevo_hist], ignore_index=True)
                 guardar_datos_cloud(st.session_state.df_activas, "patentes_activas")
                 
-                # Al guardar en Google Sheets, omitimos la columna temporal 'Minutos_Carga_Raw' para no romper tu formato
                 df_guardar_hist = st.session_state.df_historial.drop(columns=["Minutos_Carga_Raw"], errors='ignore')
                 guardar_datos_cloud(df_guardar_hist, "historial_final")
                 
@@ -254,40 +258,67 @@ with tab4:
                 st.error("Rellene todos los campos.")
 
 # =====================================================================
-# PESTAÑA 5: MONITOREO Y PROMEDIOS
+# PESTAÑA 5: MONITOREO Y KPIS
 # =====================================================================
 with tab5:
     st.header("📊 Monitor de Patio y Estadísticas")
     
-    st.subheader("🚚 Vehículos actualmente en patio")
+    # Cambio 2: Texto modificado a "Vehículos en CD"
+    st.subheader("🚚 Vehículos en CD")
     if not st.session_state.df_activas.empty:
         st.dataframe(st.session_state.df_activas[["Patente", "Empresa", "Chofer", "Estado"]], use_container_width=True)
     else:
-        st.info("No hay vehículos en patio.")
+        st.info("No hay vehículos en CD.")
         
     st.markdown("---")
     
-    st.subheader("📈 Estadísticas de Tiempos Promedio (Despacho)")
-    if not st.session_state.df_historial.empty and "Minutos_Carga_Raw" in st.session_state.df_historial.columns:
-        df_stats = st.session_state.df_historial.copy()
-        df_stats['Minutos_Carga_Raw'] = pd.to_numeric(df_stats['Minutos_Carga_Raw'], errors='coerce')
-        
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.markdown("**Por Empresa**")
-            st.dataframe(df_stats.groupby("Empresa")["Minutos_Carga_Raw"].mean().round(1).reset_index().rename(columns={"Minutos_Carga_Raw": "Minutos Promedio"}), use_container_width=True)
-        with c2:
-            st.markdown("**Por Chofer**")
-            st.dataframe(df_stats.groupby("Chofer")["Minutos_Carga_Raw"].mean().round(1).reset_index().rename(columns={"Minutos_Carga_Raw": "Minutos Promedio"}), use_container_width=True)
-        with c3:
-            st.markdown("**Por Patente**")
-            st.dataframe(df_stats.groupby("Patente")["Minutos_Carga_Raw"].mean().round(1).reset_index().rename(columns={"Minutos_Carga_Raw": "Minutos Promedio"}), use_container_width=True)
-    else:
-        st.info("Los promedios se calcularán cuando se complete el primer ciclo de salida de despacho.")
-        
-    st.markdown("---")
-    
-    st.subheader("📋 Consolidado Histórico")
+    # Cambio 1: Inyección de Bloque de Filtros de Reportería
+    st.subheader("🔍 Filtros de Reportería")
     if not st.session_state.df_historial.empty:
-        df_mostrar = st.session_state.df_historial.drop(columns=["Minutos_Carga_Raw"], errors='ignore')
+        col_f1, col_f2, col_f3 = st.columns(3)
+        with col_f1:
+            lista_fechas = ["Todos"] + sorted(list(st.session_state.df_historial["Fecha"].dropna().unique()))
+            filtro_fecha = st.selectbox("Filtrar por Fecha:", lista_fechas)
+        with col_f2:
+            lista_semanas = ["Todos"] + sorted(list(st.session_state.df_historial["Semana"].dropna().unique()))
+            filtro_semana = st.selectbox("Filtrar por Semana:", lista_semanas)
+        with col_f3:
+            lista_meses = ["Todos"] + sorted(list(st.session_state.df_historial["Mes"].dropna().unique()))
+            filtro_mes = st.selectbox("Filtrar por Mes:", lista_meses)
+            
+        # Lógica de Filtrado unificado para las tablas inferiores
+        df_filtrado_kpis = st.session_state.df_historial.copy()
+        if filtro_fecha != "Todos":
+            df_filtrado_kpis = df_filtrado_kpis[df_filtrado_kpis["Fecha"] == filtro_fecha]
+        if filtro_semana != "Todos":
+            df_filtrado_kpis = df_filtrado_kpis[df_filtrado_kpis["Semana"] == filtro_semana]
+        if filtro_mes != "Todos":
+            df_filtrado_kpis = df_filtrado_kpis[df_filtrado_kpis["Mes"] == filtro_mes]
+            
+        # Cambio 3: Tabla "Consolidado Histórico" se despliega PRIMERO
+        st.subheader("📋 Consolidado Histórico")
+        df_mostrar = df_filtrado_kpis.drop(columns=["Minutos_Carga_Raw"], errors='ignore')
         st.dataframe(df_mostrar, use_container_width=True)
+        
+        st.markdown("---")
+        
+        # Cambio 2 y 3: Se cambia el título a "Estadía Promedio CD" y se posiciona ABAJO
+        st.subheader("📈 Estadía Promedio CD")
+        if "Minutos_Carga_Raw" in df_filtrado_kpis.columns:
+            df_stats = df_filtrado_kpis.copy()
+            df_stats['Minutos_Carga_Raw'] = pd.to_numeric(df_stats['Minutos_Carga_Raw'], errors='coerce')
+            
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.markdown("**Por Empresa**")
+                st.dataframe(df_stats.groupby("Empresa")["Minutos_Carga_Raw"].mean().round(1).reset_index().rename(columns={"Minutos_Carga_Raw": "Minutos Promedio"}), use_container_width=True)
+            with c2:
+                st.markdown("**Por Chofer**")
+                st.dataframe(df_stats.groupby("Chofer")["Minutos_Carga_Raw"].mean().round(1).reset_index().rename(columns={"Minutos_Carga_Raw": "Minutos Promedio"}), use_container_width=True)
+            with c3:
+                st.markdown("**Por Patente**")
+                st.dataframe(df_stats.groupby("Patente")["Minutos_Carga_Raw"].mean().round(1).reset_index().rename(columns={"Minutos_Carga_Raw": "Minutos Promedio"}), use_container_width=True)
+        else:
+            st.info("Falta procesar datos numéricos para calcular promedios.")
+    else:
+        st.info("No hay datos históricos registrados en la planilla para aplicar filtros.")
