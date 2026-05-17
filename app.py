@@ -103,8 +103,6 @@ def guardar_datos_cloud(df, pestaña_nombre):
 # =====================================================================
 # ACTUALIZACIÓN SILENCIOSA Y LLAVES DE LIMPIEZA INTELIGENTE
 # =====================================================================
-# Esta es la magia: Al quitar el "if not in session_state", forzamos a que 
-# cada vez que el usuario haga un clic o input, la app traiga los datos frescos de la nube.
 st.session_state.df_activas = cargar_datos_cloud("patentes_activas")
 st.session_state.df_historial = cargar_datos_cloud("historial_final")
 
@@ -235,39 +233,46 @@ if tab3:
     with tab3:
         st.header("📦 Registro de Ingreso a Despacho")
         lista_totales = st.session_state.df_activas["Patente"].tolist() if not st.session_state.df_activas.empty else []
-        patente_desp = st.selectbox("Buscar o Seleccionar Patente para Despacho:", [""] + lista_totales).upper().strip()
+        
+        patente_desp = st.selectbox("Buscar o Seleccionar Patente para Despacho:", [""] + lista_totales, key=f"sel_desp_{st.session_state.limpiar_despacho}").upper().strip()
         
         if patente_desp:
             fila = st.session_state.df_activas[st.session_state.df_activas["Patente"] == patente_desp].iloc[0]
             
             if fila["Estado"] == "En Logística Inversa":
-                st.error("⛔ RESTRICCIÓN ACTIVA: Este vehículo no ha registrado su SALIDA desde Logística Inversa (Módulo 2). El registro en Despacho está completamente bloqueado.")
+                st.error(
+                    "⛔ RESTRICCIÓN ACTIVA: Este vehículo no ha registrado su SALIDA desde Logística "
+                    "Inversa (Módulo 2). El registro en Despacho está completamente bloqueado. "
+                    "(Si el equipo de Inversa ya le dio salida, actualiza la página o vuelve a seleccionarlo)."
+                )
             
-            with st.form(f"form_despacho_{st.session_state.limpiar_despacho}"):
-                empresa_f = st.text_input("🏢 Empresa", value=fila["Empresa"]).upper().strip()
-                chofer_f = st.text_input("👤 Nombre y apellido del Chofer", value=fila["Chofer"]).upper().strip()
-                rut_f = st.text_input("🆔 RUT", value=fila["RUT"], max_chars=10).upper().strip()
-                
-                if st.form_submit_button("📥 Registrar Entrada a Carga"):
-                    if fila["Estado"] == "En Logística Inversa":
-                        st.error("❌ Operación Denegada: No se puede registrar en despacho una patente que no ha realizado su salida desde Logística Inversa.")
-                    elif len(patente_desp) != 6:
-                        st.error("❌ La patente en andén debe poseer un largo exacto de 6 caracteres.")
-                    elif len(rut_f) < 9 or len(rut_f) > 10:
-                        st.error(f"❌ El RUT debe tener entre 9 y 10 caracteres (Tiene {len(rut_f)}).")
-                    else:
-                        idx = st.session_state.df_activas[st.session_state.df_activas["Patente"] == patente_desp].index[0]
-                        st.session_state.df_activas.at[idx, "Empresa"] = empresa_f
-                        st.session_state.df_activas.at[idx, "Chofer"] = chofer_f
-                        st.session_state.df_activas.at[idx, "RUT"] = rut_f
-                        st.session_state.df_activas.at[idx, "H3_Llegada_Despacho"] = ahora_actual.isoformat()
-                        st.session_state.df_activas.at[idx, "Estado"] = "En Despacho (Cargando)"
-                        guardar_datos_cloud(st.session_state.df_activas, "patentes_activas")
-                        st.success("✅ Posicionado en Despacho con éxito.")
-                        
-                        st.session_state.limpiar_despacho += 1
-                        time.sleep(1)
-                        st.rerun()
+            elif fila["Estado"] == "En Despacho (Cargando)":
+                st.info(f"✅ La patente {patente_desp} ya fue ingresada a Despacho exitosamente. Está en proceso de carga.")
+            
+            else:
+                with st.form("form_despacho_inner"):
+                    empresa_f = st.text_input("🏢 Empresa", value=fila["Empresa"]).upper().strip()
+                    chofer_f = st.text_input("👤 Nombre y apellido del Chofer", value=fila["Chofer"]).upper().strip()
+                    rut_f = st.text_input("🆔 RUT", value=fila["RUT"], max_chars=10).upper().strip()
+                    
+                    if st.form_submit_button("📥 Registrar Entrada a Carga"):
+                        if len(patente_desp) != 6:
+                            st.error("❌ La patente en andén debe poseer un largo exacto de 6 caracteres.")
+                        elif len(rut_f) < 9 or len(rut_f) > 10:
+                            st.error(f"❌ El RUT debe tener entre 9 y 10 caracteres (Tiene {len(rut_f)}).")
+                        else:
+                            idx = st.session_state.df_activas[st.session_state.df_activas["Patente"] == patente_desp].index[0]
+                            st.session_state.df_activas.at[idx, "Empresa"] = empresa_f
+                            st.session_state.df_activas.at[idx, "Chofer"] = chofer_f
+                            st.session_state.df_activas.at[idx, "RUT"] = rut_f
+                            st.session_state.df_activas.at[idx, "H3_Llegada_Despacho"] = ahora_actual.isoformat()
+                            st.session_state.df_activas.at[idx, "Estado"] = "En Despacho (Cargando)"
+                            guardar_datos_cloud(st.session_state.df_activas, "patentes_activas")
+                            st.success("✅ Posicionado en Despacho con éxito.")
+                            
+                            st.session_state.limpiar_despacho += 1
+                            time.sleep(1)
+                            st.rerun()
 
 # =====================================================================
 # PESTAÑA 4: SALIDA DESPACHO
