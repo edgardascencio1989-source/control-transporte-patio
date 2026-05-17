@@ -232,9 +232,14 @@ if tab2:
 if tab3:
     with tab3:
         st.header("📦 Registro de Ingreso a Despacho")
-        lista_totales = st.session_state.df_activas["Patente"].tolist() if not st.session_state.df_activas.empty else []
         
-        patente_desp = st.selectbox("Buscar o Seleccionar Patente para Despacho:", [""] + lista_totales, key=f"sel_desp_{st.session_state.limpiar_despacho}").upper().strip()
+        if not st.session_state.df_activas.empty:
+            df_pendientes = st.session_state.df_activas[st.session_state.df_activas["Estado"] != "En Despacho (Cargando)"]
+            lista_pendientes = df_pendientes["Patente"].tolist()
+        else:
+            lista_pendientes = []
+            
+        patente_desp = st.selectbox("Buscar o Seleccionar Patente para Despacho:", [""] + lista_pendientes, key=f"sel_desp_{st.session_state.limpiar_despacho}").upper().strip()
         
         if patente_desp:
             fila = st.session_state.df_activas[st.session_state.df_activas["Patente"] == patente_desp].iloc[0]
@@ -245,10 +250,6 @@ if tab3:
                     "Inversa (Módulo 2). El registro en Despacho está completamente bloqueado. "
                     "(Si el equipo de Inversa ya le dio salida, actualiza la página o vuelve a seleccionarlo)."
                 )
-            
-            elif fila["Estado"] == "En Despacho (Cargando)":
-                st.info(f"✅ La patente {patente_desp} ya fue ingresada a Despacho exitosamente. Está en proceso de carga.")
-            
             else:
                 with st.form("form_despacho_inner"):
                     empresa_f = st.text_input("🏢 Empresa", value=fila["Empresa"]).upper().strip()
@@ -412,7 +413,7 @@ if tab5:
                 df_filtrado_kpis = df_filtrado_kpis[df_filtrado_kpis["Mes"] == filtro_mes]
                 
             st.subheader("📋 Consolidado Histórico")
-            st.dataframe(df_filtrado_kpis, use_container_width=True)
+            st.dataframe(df_filtrado_kpis.drop(columns=["Minutos_Carga_Raw"], errors='ignore'), use_container_width=True)
             
             st.markdown("---")
             
@@ -424,13 +425,19 @@ if tab5:
                 c1, c2, c3 = st.columns(3)
                 with c1:
                     st.markdown("**Por Empresa**")
-                    st.dataframe(df_stats.groupby("Empresa")["Minutos_Carga_Raw"].mean().round(1).reset_index().rename(columns={"Minutos_Carga_Raw": "Minutos Promedio"}), use_container_width=True)
+                    df_emp = df_stats.groupby("Empresa")["Minutos_Carga_Raw"].mean().reset_index()
+                    df_emp["Tiempo Promedio"] = df_emp["Minutos_Carga_Raw"].apply(formatear_a_cronometro)
+                    st.dataframe(df_emp[["Empresa", "Tiempo Promedio"]], use_container_width=True)
                 with c2:
                     st.markdown("**Por Chofer**")
-                    st.dataframe(df_stats.groupby("Chofer")["Minutos_Carga_Raw"].mean().round(1).reset_index().rename(columns={"Minutos_Carga_Raw": "Minutos Promedio"}), use_container_width=True)
+                    df_chof = df_stats.groupby("Chofer")["Minutos_Carga_Raw"].mean().reset_index()
+                    df_chof["Tiempo Promedio"] = df_chof["Minutos_Carga_Raw"].apply(formatear_a_cronometro)
+                    st.dataframe(df_chof[["Chofer", "Tiempo Promedio"]], use_container_width=True)
                 with c3:
                     st.markdown("**Por Patente**")
-                    st.dataframe(df_stats.groupby("Patente")["Minutos_Carga_Raw"].mean().round(1).reset_index().rename(columns={"Minutos_Carga_Raw": "Minutos Promedio"}), use_container_width=True)
+                    df_pat = df_stats.groupby("Patente")["Minutos_Carga_Raw"].mean().reset_index()
+                    df_pat["Tiempo Promedio"] = df_pat["Minutos_Carga_Raw"].apply(formatear_a_cronometro)
+                    st.dataframe(df_pat[["Patente", "Tiempo Promedio"]], use_container_width=True)
             else:
                 st.error("⚠️ Error: No se encuentra la columna 'Minutos_Carga_Raw' en la planilla de Google Sheets.")
         else:
