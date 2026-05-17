@@ -18,7 +18,7 @@ BACKUP_ACTIVAS = "backup_patentes_activas.csv"
 BACKUP_HISTORIAL = "backup_historial_final.csv"
 
 # =====================================================================
-# MOTOR DE CONEXIÓN CON GOOGLE SHEETS
+# MOTOR DE CONEXIÓN CON GOOGLE SHEETS (CON PARCHE PARA ERROR PEM)
 # =====================================================================
 def conectar_google_sheets(pestaña_nombre):
     """Establece conexión segura usando los Secrets de Streamlit en formato JSON"""
@@ -31,6 +31,7 @@ def conectar_google_sheets(pestaña_nombre):
             
         creds_dict = json.loads(st.secrets["json_data"])
         
+        # Parche para el error InvalidByte (PEM): arregla los saltos de línea
         if "private_key" in creds_dict:
             creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
             
@@ -84,12 +85,11 @@ def cargar_datos_cloud(pestaña_nombre):
     if df is None or df.empty:
         df = pd.DataFrame(columns=columnas_requeridas)
         
-    # PARCHE ANTI-ERRORES: Forzar que existan todas las columnas, aunque los datos sean viejos
+    # Forzar que existan todas las columnas requeridas (Soporte columna nueva)
     for col in columnas_requeridas:
         if col not in df.columns:
             df[col] = ""
             
-    # Guardar el estado limpio en el disco local
     df.to_csv(archivo_local, index=False)
     return df
 
@@ -225,24 +225,33 @@ if tab2:
                 st.rerun()
 
 # =====================================================================
-# PESTAÑA 3: INGRESO DESPACHO
+# PESTAÑA 3: INGRESO DESPACHO (CON RESTRICCIÓN SOLICITADA)
 # =====================================================================
 if tab3:
     with tab3:
         st.header("📦 Registro de Ingreso a Despacho")
-        lista_espera = st.session_state.df_activas[st.session_state.df_activas["Estado"] == "Esperando Despacho"]["Patente"].tolist() if not st.session_state.df_activas.empty else []
         
-        patente_desp = st.selectbox("Buscar Patente en Espera:", [""] + lista_espera).upper().strip()
+        # Muestra todas las patentes en patio para control transparente
+        lista_totales = st.session_state.df_activas["Patente"].tolist() if not st.session_state.df_activas.empty else []
+        patente_desp = st.selectbox("Buscar o Seleccionar Patente para Despacho:", [""] + lista_totales).upper().strip()
         
         if patente_desp:
             fila = st.session_state.df_activas[st.session_state.df_activas["Patente"] == patente_desp].iloc[0]
+            
+            # Bloqueo Visual Temprano
+            if fila["Estado"] == "En Logística Inversa":
+                st.error("⛔ RESTRICCIÓN ACTIVA: Este vehículo no ha registrado su SALIDA desde Logística Inversa (Módulo 2). El registro en Despacho está completamente bloqueado.")
+            
             with st.form(f"form_despacho_{st.session_state.limpiar_despacho}"):
                 empresa_f = st.text_input("🏢 Empresa", value=fila["Empresa"]).upper().strip()
                 chofer_f = st.text_input("👤 Nombre y apellido del Chofer", value=fila["Chofer"]).upper().strip()
                 rut_f = st.text_input("🆔 RUT", value=fila["RUT"], max_chars=10).upper().strip()
                 
                 if st.form_submit_button("📥 Registrar Entrada a Carga"):
-                    if len(patente_desp) != 6:
+                    # Validación estricta solicitada de salida de logística inversa
+                    if fila["Estado"] == "En Logística Inversa":
+                        st.error("❌ Operación Denegada: No se puede registrar en despacho una patente que no ha realizado su salida desde Logística Inversa.")
+                    elif len(patente_desp) != 6:
                         st.error("❌ La patente en andén debe poseer un largo exacto de 6 caracteres.")
                     elif len(rut_f) < 9 or len(rut_f) > 10:
                         st.error(f"❌ El RUT debe tener entre 9 y 10 caracteres (Tiene {len(rut_f)}).")
@@ -254,7 +263,7 @@ if tab3:
                         st.session_state.df_activas.at[idx, "H3_Llegada_Despacho"] = ahora_actual.isoformat()
                         st.session_state.df_activas.at[idx, "Estado"] = "En Despacho (Cargando)"
                         guardar_datos_cloud(st.session_state.df_activas, "patentes_activas")
-                        st.success("✅ Posicionado en Despacho.")
+                        st.success("✅ Posicionado en Despacho con éxito.")
                         st.session_state.limpiar_despacho += 1
                         time.sleep(1)
                         st.rerun()
@@ -309,15 +318,63 @@ if tab4:
                     st.error("Rellene todos los campos.")
 
 # =====================================================================
-# PESTAÑA 5: MONITOREO Y KPIS
+# PESTAÑA 5: MONITOREO Y KPIS (CON LA NUEVA TABLA DETALLADA EN VIVO)
 # =====================================================================
 if tab5:
     with tab5:
         st.header("📊 Monitor de Patio y Estadísticas")
         
+        # INCLUSIÓN DE COLUMNAS SOLICITADAS CON CÁLCULO DE CRONÓMETRO EN VIVO
         st.subheader("🚚 Vehículos en CD")
         if not st.session_state.df_activas.empty:
-            st.dataframe(st.session_state.df_activas[["Patente", "Empresa", "Chofer", "Estado"]], use_container_width=True)
+            df_en_patio = st.session_state.df_activas.copy()
+            ahora_actual_calc = datetime.datetime.now(zona_local)
+            
+            ingresos_inv, salidas_inv, ingresos_desp, salidas_desp = [], [], [], []
+            t_retornos, t_cargas = [], []
+            
+            for _, row in df_en_patio.iterrows():
+                h1 = datetime.datetime.fromisoformat(row["H1_Llegada_Inversa"]) if pd.notna(row["H1_Llegada_Inversa"]) and row["H1_Llegada_Inversa"] else None
+                h2 = datetime.datetime.fromisoformat(row["H2_Salida_Inversa"]) if pd.notna(row["H2_Salida_Inversa"]) and row["H2_Salida_Inversa"] else None
+                h3 = datetime.datetime.fromisoformat(row["H3_Llegada_Despacho"]) if pd.notna(row["H3_Llegada_Despacho"]) and row["H3_Llegada_Despacho"] else None
+                h4 = datetime.datetime.fromisoformat(row["H4_Salida_Despacho"]) if pd.notna(row["H4_Salida_Despacho"]) and row["H4_Salida_Despacho"] else None
+                
+                ingresos_inv.append(h1.strftime('%H:%M:%S') if h1 else "N/A")
+                salidas_inv.append(h2.strftime('%H:%M:%S') if h2 else "N/A")
+                ingresos_desp.append(h3.strftime('%H:%M:%S') if h3 else "N/A")
+                salidas_desp.append(h4.strftime('%H:%M:%S') if h4 else "N/A")
+                
+                # Cronómetro en vivo Inversa
+                if h1 and h2:
+                    t_retorno_min = (h2 - h1).total_seconds() / 60
+                elif h1 and not h2:
+                    t_retorno_min = (ahora_actual_calc - h1).total_seconds() / 60
+                else:
+                    t_retorno_min = None
+                t_retornos.append(formatear_a_cronometro(t_retorno_min) if t_retorno_min is not None else "N/A")
+                
+                # Cronómetro en vivo Despacho
+                if h3 and h4:
+                    t_carga_min = (h4 - h3).total_seconds() / 60
+                elif h3 and not h4:
+                    t_carga_min = (ahora_actual_calc - h3).total_seconds() / 60
+                else:
+                    t_carga_min = None
+                t_cargas.append(formatear_a_cronometro(t_carga_min) if t_carga_min is not None else "N/A")
+            
+            df_en_patio["Ingreso Inversa"] = ingresos_inv
+            df_en_patio["Salida Inversa"] = salidas_inv
+            df_en_patio["Ingreso Despacho"] = ingresos_desp
+            df_en_patio["Salida Despacho"] = salidas_desp
+            df_en_patio["T. Retorno (Descarga)"] = t_retornos
+            df_en_patio["T. Despacho (Carga)"] = t_cargas
+            
+            columnas_mostrar = [
+                "Patente", "Empresa", "Chofer", "Estado", 
+                "Ingreso Inversa", "Salida Inversa", "Ingreso Despacho", "Salida Despacho", 
+                "T. Retorno (Descarga)", "T. Despacho (Carga)"
+            ]
+            st.dataframe(df_en_patio[columnas_mostrar], use_container_width=True)
         else:
             st.info("No hay vehículos en CD.")
             
@@ -350,7 +407,6 @@ if tab5:
             st.markdown("---")
             
             st.subheader("📈 Estadía Promedio CD")
-            # Este bloque ahora es seguro contra memorias caché antiguas
             if "Minutos_Carga_Raw" in df_filtrado_kpis.columns:
                 df_stats = df_filtrado_kpis.copy()
                 df_stats['Minutos_Carga_Raw'] = pd.to_numeric(df_stats['Minutos_Carga_Raw'], errors='coerce').fillna(0)
