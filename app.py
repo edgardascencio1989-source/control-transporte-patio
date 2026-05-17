@@ -72,7 +72,7 @@ def cargar_datos_cloud(pestaña_nombre):
         return pd.DataFrame(columns=[
             "Fecha", "Semana", "Mes", "Empresa", "Patente", "Chofer", "RUT", "Ruta Auditada",
             "Ingreso Inversa", "Salida Inversa", "Ingreso Despacho", "Salida Despacho",
-            "T. Retorno (Descarga)", "T. Despacho (Carga)"
+            "T. Retorno (Descarga)", "T. Despacho (Carga)", "Minutos_Carga_Raw"
         ])
 
 def guardar_datos_cloud(df, pestaña_nombre):
@@ -122,48 +122,33 @@ if vista_url == "inversa":
     mostrar_tab1, mostrar_tab2, mostrar_tab5 = True, True, True
     titulos_pestañas = ["📥 1. Ingreso Logística Inversa", "📤 2. Salida de Inversa", "📊 5. Monitoreo y KPIS"]
     subtitulo_pantalla = "🔄 Módulo Operativo: EQUIPO LOGÍSTICA INVERSA"
-
 elif vista_url == "despacho":
     mostrar_tab3, mostrar_tab4, mostrar_tab5 = True, True, True
     titulos_pestañas = ["📦 3. Ingreso a despacho", "🚪 4. Salida Despacho", "📊 5. Monitoreo y KPIS"]
     subtitulo_pantalla = "📦 Módulo Operativo: EQUIPO DESPACHO"
-
 elif vista_url == "monitoreo":
     mostrar_tab5 = True
     titulos_pestañas = ["📊 5. Monitoreo y KPIS"]
     subtitulo_pantalla = "🖥️ Módulo de Visualización: EQUIPO MONITORES"
-
 else:
     mostrar_tab1, mostrar_tab2, mostrar_tab3, mostrar_tab4, mostrar_tab5 = True, True, True, True, True
     titulos_pestañas = [
-        "📥 1. Ingreso Logística Inversa", 
-        "📤 2. Salida de Inversa", 
-        "📦 3. Ingreso a despacho", 
-        "🚪 4. Salida Despacho",
-        "📊 5. Monitoreo y KPIS"
+        "📥 1. Ingreso Logística Inversa", "📤 2. Salida de Inversa", 
+        "📦 3. Ingreso a despacho", "🚪 4. Salida Despacho", "📊 5. Monitoreo y KPIS"
     ]
     subtitulo_pantalla = "👑 Módulo Global: ADMINISTRACIÓN"
 
-# Renderizado de Encabezados principales
-st.title("🚚 Control de salidas e ingresos Transporte")
-st.caption(subtitulo_pantalla)
-
-# Renderizado dinámico de pestañas según rol de URL
 pestañas_creadas = st.tabs(titulos_pestañas)
 
 idx = 0
 tab1 = pestañas_creadas[idx] if mostrar_tab1 else None
 if mostrar_tab1: idx += 1
-
 tab2 = pestañas_creadas[idx] if mostrar_tab2 else None
 if mostrar_tab2: idx += 1
-
 tab3 = pestañas_creadas[idx] if mostrar_tab3 else None
 if mostrar_tab3: idx += 1
-
 tab4 = pestañas_creadas[idx] if mostrar_tab4 else None
 if mostrar_tab4: idx += 1
-
 tab5 = pestañas_creadas[idx] if mostrar_tab5 else None
 
 ahora_actual = datetime.datetime.now(zona_local)
@@ -278,7 +263,7 @@ if tab4:
                     h3 = datetime.datetime.fromisoformat(fila_viaje["H3_Llegada_Despacho"])
                     h4 = ahora_actual
                     
-                    t_retorno = (h2 - h1).total_seconds() / 60 if h1 and h2 else None
+                    t_retorno = (h2 - h1).total_seconds() / 60 if h1 and h2 else 0.0
                     t_carga = (h4 - h3).total_seconds() / 60
                     
                     nuevo_hist = pd.DataFrame([{
@@ -289,18 +274,16 @@ if tab4:
                         "Ingreso Inversa": h1.strftime('%H:%M:%S') if h1 else "N/A",
                         "Salida Inversa": h2.strftime('%H:%M:%S') if h2 else "N/A",
                         "Ingreso Despacho": h3.strftime('%H:%M:%S'), "Salida Despacho": h4.strftime('%H:%M:%S'),
-                        "T. Retorno (Descarga)": formatear_a_cronometro(t_retorno) if t_retorno is not None else "N/A",
+                        "T. Retorno (Descarga)": formatear_a_cronometro(t_retorno) if h1 else "N/A",
                         "T. Despacho (Carga)": formatear_a_cronometro(t_carga),
-                        "Minutos_Carga_Raw": t_carga
+                        "Minutos_Carga_Raw": round(t_retorno + t_carga, 1) # Guarda la estadía total directamente en Sheets
                     }])
                     
                     st.session_state.df_historial = pd.concat([st.session_state.df_historial, nuevo_hist], ignore_index=True)
                     guardar_datos_cloud(st.session_state.df_activas, "patentes_activas")
+                    guardar_datos_cloud(st.session_state.df_historial, "historial_final") # Se guarda completo con la columna nativa
                     
-                    df_guardar_hist = st.session_state.df_historial.drop(columns=["Minutos_Carga_Raw"], errors='ignore')
-                    guardar_datos_cloud(df_guardar_hist, "historial_final")
-                    
-                    st.success("✅ Viaje archivado.")
+                    st.success("✅ Viaje archivado exitosamente.")
                     st.session_state.limpiar_salida += 1
                     time.sleep(1)
                     st.rerun()
@@ -344,15 +327,15 @@ if tab5:
                 df_filtrado_kpis = df_filtrado_kpis[df_filtrado_kpis["Mes"] == filtro_mes]
                 
             st.subheader("📋 Consolidado Histórico")
-            df_mostrar = df_filtrado_kpis.drop(columns=["Minutos_Carga_Raw"], errors='ignore')
-            st.dataframe(df_mostrar, use_container_width=True)
+            st.dataframe(df_filtrado_kpis, use_container_width=True)
             
             st.markdown("---")
             
             st.subheader("📈 Estadía Promedio CD")
+            # LECTURA DIRECTA Y LIMPIA DESDE LA COLUMNA DE GOOGLE SHEETS
             if "Minutos_Carga_Raw" in df_filtrado_kpis.columns:
                 df_stats = df_filtrado_kpis.copy()
-                df_stats['Minutos_Carga_Raw'] = pd.to_numeric(df_stats['Minutos_Carga_Raw'], errors='coerce')
+                df_stats['Minutos_Carga_Raw'] = pd.to_numeric(df_stats['Minutos_Carga_Raw'], errors='coerce').fillna(0)
                 
                 c1, c2, c3 = st.columns(3)
                 with c1:
@@ -365,7 +348,7 @@ if tab5:
                     st.markdown("**Por Patente**")
                     st.dataframe(df_stats.groupby("Patente")["Minutos_Carga_Raw"].mean().round(1).reset_index().rename(columns={"Minutos_Carga_Raw": "Minutos Promedio"}), use_container_width=True)
             else:
-                st.info("Falta procesar datos numéricos para calcular promedios.")
+                st.error("⚠️ Error: No se encuentra la columna 'Minutos_Carga_Raw' en la planilla de Google Sheets.")
         else:
             st.info("No hay datos históricos registrados en la planilla para aplicar filtros.")
 
