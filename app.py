@@ -101,12 +101,12 @@ def guardar_datos_cloud(df, pestaña_nombre):
     return False
 
 # =====================================================================
-# INICIALIZACIÓN DE MEMORIA Y LLAVES DE LIMPIEZA INTELIGENTE
+# ACTUALIZACIÓN SILENCIOSA Y LLAVES DE LIMPIEZA INTELIGENTE
 # =====================================================================
-if "df_activas" not in st.session_state:
-    st.session_state.df_activas = cargar_datos_cloud("patentes_activas")
-if "df_historial" not in st.session_state:
-    st.session_state.df_historial = cargar_datos_cloud("historial_final")
+# Esta es la magia: Al quitar el "if not in session_state", forzamos a que 
+# cada vez que el usuario haga un clic o input, la app traiga los datos frescos de la nube.
+st.session_state.df_activas = cargar_datos_cloud("patentes_activas")
+st.session_state.df_historial = cargar_datos_cloud("historial_final")
 
 if "limpiar_inversa" not in st.session_state:
     st.session_state.limpiar_inversa = 0
@@ -154,18 +154,9 @@ else:
     ]
     subtitulo_pantalla = "👑 Módulo Global: ADMINISTRACIÓN"
 
-# ENCABEZADO CON BOTÓN DE SINCRONIZACIÓN GLOBAL
-col_tit, col_sync = st.columns([8, 2])
-with col_tit:
-    st.title("🚚 Control de salidas e ingresos Transporte")
-    st.caption(subtitulo_pantalla)
-with col_sync:
-    st.write("") # Espacio para alinear verticalmente
-    if st.button("🔄 Sincronizar Nube"):
-        with st.spinner("Descargando datos..."):
-            st.session_state.df_activas = cargar_datos_cloud("patentes_activas")
-            st.session_state.df_historial = cargar_datos_cloud("historial_final")
-        st.rerun()
+# ENCABEZADO PRINCIPAL
+st.title("🚚 Control de salidas e ingresos Transporte")
+st.caption(subtitulo_pantalla)
 
 pestañas_creadas = st.tabs(titulos_pestañas)
 
@@ -250,7 +241,7 @@ if tab3:
             fila = st.session_state.df_activas[st.session_state.df_activas["Patente"] == patente_desp].iloc[0]
             
             if fila["Estado"] == "En Logística Inversa":
-                st.error("⛔ RESTRICCIÓN ACTIVA: Este vehículo no ha registrado su SALIDA desde Logística Inversa (Módulo 2). El registro en Despacho está completamente bloqueado. (Si el equipo de Inversa ya le dio salida, presiona el botón '🔄 Sincronizar Nube' arriba).")
+                st.error("⛔ RESTRICCIÓN ACTIVA: Este vehículo no ha registrado su SALIDA desde Logística Inversa (Módulo 2). El registro en Despacho está completamente bloqueado.")
             
             with st.form(f"form_despacho_{st.session_state.limpiar_despacho}"):
                 empresa_f = st.text_input("🏢 Empresa", value=fila["Empresa"]).upper().strip()
@@ -340,9 +331,6 @@ if tab5:
             st.subheader("🚚 Vehículos en CD")
         with col_btn_mon:
             if st.button("🔄 Actualizar Tiempos en Vivo"):
-                # También descarga la info limpia al hacer clic aquí
-                with st.spinner("Actualizando..."):
-                    st.session_state.df_activas = cargar_datos_cloud("patentes_activas")
                 st.rerun()
                 
         if not st.session_state.df_activas.empty:
