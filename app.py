@@ -53,7 +53,7 @@ def cargar_datos_cloud(pestaña_nombre):
     cols_hist = [
         "Fecha", "Semana", "Mes", "Empresa", "Patente", "Chofer", "RUT", "Ruta Auditada",
         "Ingreso Inversa", "Salida Inversa", "Ingreso Despacho", "Salida Despacho",
-        "T. Retorno (Descarga)", "T. Despacho (Carga)", "Minutos_Carga_Raw"
+        "T. Retorno (Descarga)", "T. Despacho (Carga)", "Minutos_Carga_Raw", "Tipo de Cierre"
     ]
     columnas_requeridas = cols_activas if pestaña_nombre == "patentes_activas" else cols_hist
 
@@ -123,7 +123,6 @@ def formatear_a_cronometro(minutos_decimales):
     return f"{horas:02d}:{minutos:02d}:{segundos:02d}"
 
 def cronometro_a_minutos(texto):
-    """Convierte HH:MM:SS a minutos decimales para sacar promedios matemáticos exactos"""
     if pd.isna(texto) or texto in ["N/A", "No registra", ""]:
         return 0.0
     try:
@@ -201,7 +200,7 @@ if tab1:
                 elif len(rut_inv) < 9 or len(rut_inv) > 10:
                     st.error(f"❌ El RUT ingresado tiene {len(rut_inv)} caracteres. Debe tener un mínimo de 9 y un máximo de 10 caracteres.")
                 elif not st.session_state.df_activas.empty and patente_inv in st.session_state.df_activas["Patente"].values:
-                    st.warning("⚠️ Esta patente ya registra una operación activa en patio.")
+                    st.warning("⚠️ Esta patente ya registra una operation activa en patio.")
                 else:
                     nuevo_registro = pd.DataFrame([{
                         "Patente": patente_inv, "Empresa": empresa_inv, "Chofer": chofer_inv, "RUT": rut_inv,
@@ -212,7 +211,6 @@ if tab1:
                     st.session_state.df_activas = pd.concat([st.session_state.df_activas, nuevo_registro], ignore_index=True)
                     guardar_datos_cloud(st.session_state.df_activas, "patentes_activas")
                     st.success("✅ Registrado con éxito.")
-                    
                     st.session_state.limpiar_inversa += 1
                     time.sleep(1)
                     st.rerun()
@@ -242,7 +240,6 @@ if tab2:
 if tab3:
     with tab3:
         st.header("📦 Registro de Ingreso a Despacho")
-        
         if not st.session_state.df_activas.empty:
             df_pendientes = st.session_state.df_activas[st.session_state.df_activas["Estado"] != "En Despacho (Cargando)"]
             lista_pendientes = df_pendientes["Patente"].tolist()
@@ -253,7 +250,6 @@ if tab3:
         
         if patente_desp:
             fila = st.session_state.df_activas[st.session_state.df_activas["Patente"] == patente_desp].iloc[0]
-            
             if fila["Estado"] == "En Logística Inversa":
                 st.error(
                     "⛔ RESTRICCIÓN ACTIVA: Este vehículo no ha registrado su SALIDA desde Logística "
@@ -280,7 +276,6 @@ if tab3:
                             st.session_state.df_activas.at[idx, "Estado"] = "En Despacho (Cargando)"
                             guardar_datos_cloud(st.session_state.df_activas, "patentes_activas")
                             st.success("✅ Posicionado en Despacho con éxito.")
-                            
                             st.session_state.limpiar_despacho += 1
                             time.sleep(1)
                             st.rerun()
@@ -320,7 +315,8 @@ if tab4:
                         "Ingreso Despacho": h3.strftime('%H:%M:%S'), "Salida Despacho": h4.strftime('%H:%M:%S'),
                         "T. Retorno (Descarga)": formatear_a_cronometro(t_retorno) if h1 else "N/A",
                         "T. Despacho (Carga)": formatear_a_cronometro(t_carga),
-                        "Minutos_Carga_Raw": round(t_retorno + t_carga, 1)
+                        "Minutos_Carga_Raw": round(t_retorno + t_carga, 1),
+                        "Tipo de Cierre": "Normal" # Columna nueva identificadora
                     }])
                     
                     st.session_state.df_historial = pd.concat([st.session_state.df_historial, nuevo_hist], ignore_index=True)
@@ -328,7 +324,6 @@ if tab4:
                     guardar_datos_cloud(st.session_state.df_historial, "historial_final")
                     
                     st.success("✅ Viaje archivado exitosamente.")
-                    
                     st.session_state.limpiar_salida += 1
                     time.sleep(1)
                     st.rerun()
@@ -429,37 +424,38 @@ if tab5:
             
             st.subheader("📈 Estadía Promedio CD")
             
-            # CÁLCULO DE PROMEDIOS INDIVIDUALES Y TOTAL
             if "T. Retorno (Descarga)" in df_filtrado_kpis.columns and "T. Despacho (Carga)" in df_filtrado_kpis.columns:
                 df_stats = df_filtrado_kpis.copy()
                 
-                # Transformar textos de Google Sheets a minutos matemáticos
                 df_stats['Min_Inv'] = df_stats['T. Retorno (Descarga)'].apply(cronometro_a_minutos)
                 df_stats['Min_Desp'] = df_stats['T. Despacho (Carga)'].apply(cronometro_a_minutos)
                 df_stats['Min_Total'] = df_stats['Min_Inv'] + df_stats['Min_Desp']
                 
-                c1, c2, c3 = st.columns(3)
-                with c1:
-                    st.markdown("**Por Empresa**")
-                    df_emp = df_stats.groupby("Empresa")[["Min_Inv", "Min_Desp", "Min_Total"]].mean().reset_index()
-                    df_emp["Promedio Inversa"] = df_emp["Min_Inv"].apply(formatear_a_cronometro)
-                    df_emp["Promedio Despacho"] = df_emp["Min_Desp"].apply(formatear_a_cronometro)
-                    df_emp["Promedio Total CD"] = df_emp["Min_Total"].apply(formatear_a_cronometro)
-                    st.dataframe(df_emp[["Empresa", "Promedio Inversa", "Promedio Despacho", "Promedio Total CD"]], use_container_width=True)
-                with c2:
-                    st.markdown("**Por Chofer**")
-                    df_chof = df_stats.groupby("Chofer")[["Min_Inv", "Min_Desp", "Min_Total"]].mean().reset_index()
-                    df_chof["Promedio Inversa"] = df_chof["Min_Inv"].apply(formatear_a_cronometro)
-                    df_chof["Promedio Despacho"] = df_chof["Min_Desp"].apply(formatear_a_cronometro)
-                    df_chof["Promedio Total CD"] = df_chof["Min_Total"].apply(formatear_a_cronometro)
-                    st.dataframe(df_chof[["Chofer", "Promedio Inversa", "Promedio Despacho", "Promedio Total CD"]], use_container_width=True)
-                with c3:
-                    st.markdown("**Por Patente**")
-                    df_pat = df_stats.groupby("Patente")[["Min_Inv", "Min_Desp", "Min_Total"]].mean().reset_index()
-                    df_pat["Promedio Inversa"] = df_pat["Min_Inv"].apply(formatear_a_cronometro)
-                    df_pat["Promedio Despacho"] = df_pat["Min_Desp"].apply(formatear_a_cronometro)
-                    df_pat["Promedio Total CD"] = df_pat["Min_Total"].apply(formatear_a_cronometro)
-                    st.dataframe(df_pat[["Patente", "Promedio Inversa", "Promedio Despacho", "Promedio Total CD"]], use_container_width=True)
+                # REORDENAMIENTO VERTICAL SOLICITADO: Un cuadro debajo de otro
+                st.markdown("#### 🏢 Promedio Por Empresa")
+                df_emp = df_stats.groupby("Empresa")[["Min_Inv", "Min_Desp", "Min_Total"]].mean().reset_index()
+                df_emp["Promedio Inversa"] = df_emp["Min_Inv"].apply(formatear_a_cronometro)
+                df_emp["Promedio Despacho"] = df_emp["Min_Desp"].apply(formatear_a_cronometro)
+                df_emp["Promedio Total CD"] = df_emp["Min_Total"].apply(formatear_a_cronometro)
+                st.dataframe(df_emp[["Empresa", "Promedio Inversa", "Promedio Despacho", "Promedio Total CD"]], use_container_width=True)
+                
+                st.markdown("<br>", unsafe_allow_html=True) # Espacio limpio
+                
+                st.markdown("#### 👨‍✈️ Promedio Por Chofer")
+                df_chof = df_stats.groupby("Chofer")[["Min_Inv", "Min_Desp", "Min_Total"]].mean().reset_index()
+                df_chof["Promedio Inversa"] = df_chof["Min_Inv"].apply(formatear_a_cronometro)
+                df_chof["Promedio Despacho"] = df_chof["Min_Desp"].apply(formatear_a_cronometro)
+                df_chof["Promedio Total CD"] = df_chof["Min_Total"].apply(formatear_a_cronometro)
+                st.dataframe(df_chof[["Chofer", "Promedio Inversa", "Promedio Despacho", "Promedio Total CD"]], use_container_width=True)
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                
+                st.markdown("#### 📇 Promedio Por Patente")
+                df_pat = df_stats.groupby("Patente")[["Min_Inv", "Min_Desp", "Min_Total"]].mean().reset_index()
+                df_pat["Promedio Inversa"] = df_pat["Min_Inv"].apply(formatear_a_cronometro)
+                df_pat["Promedio Despacho"] = df_pat["Min_Desp"].apply(formatear_a_cronometro)
+                df_pat["Promedio Total CD"] = df_pat["Min_Total"].apply(formatear_a_cronometro)
+                st.dataframe(df_pat[["Patente", "Promedio Inversa", "Promedio Despacho", "Promedio Total CD"]], use_container_width=True)
             else:
                 st.info("No hay suficientes datos de tiempo registrados para calcular promedios.")
         else:
@@ -470,21 +466,71 @@ if tab5:
 # =====================================================================
 if vista_url == "admin":
     st.markdown("---")
-    with st.expander("🔗 PANEL SUPERVISOR: Generador de Enlaces para Equipos", expanded=True):
-        st.write("Copia los enlaces completos para compartirlos con el personal o guardarlos en sus favoritos:")
+    with st.expander("🔗 PANEL SUPERVISOR: Configuración y Gestión de Patio", expanded=True):
+        st.write("### 🚨 Panel de Limpieza de Fin de Jornada")
+        st.write("Si quedan vehículos abiertos en el patio al terminar el turno, presiona este botón para cerrarlos en masa y limpiar el monitor para el día siguiente:")
         
+        # NUEVO BOTÓN EXCLUSIVO DE CIERRE FORZADO MASIVO
+        if st.button("⚠️ Forzar Cierre y Archivar Procesos Inconclusos", type="primary"):
+            if not st.session_state.df_activas.empty:
+                ahora_forzado = datetime.datetime.now(zona_local)
+                nuevos_registros_hist = []
+                
+                for _, fila_viaje in st.session_state.df_activas.iterrows():
+                    h1 = datetime.datetime.fromisoformat(fila_viaje["H1_Llegada_Inversa"]) if pd.notna(fila_viaje["H1_Llegada_Inversa"]) and fila_viaje["H1_Llegada_Inversa"] else None
+                    h2 = datetime.datetime.fromisoformat(fila_viaje["H2_Salida_Inversa"]) if pd.notna(fila_viaje["H2_Salida_Inversa"]) and fila_viaje["H2_Salida_Inversa"] else None
+                    h3 = datetime.datetime.fromisoformat(fila_viaje["H3_Llegada_Despacho"]) if pd.notna(fila_viaje["H3_Llegada_Despacho"]) and fila_viaje["H3_Llegada_Despacho"] else None
+                    h4 = ahora_forzado
+                    
+                    t_retorno = (h2 - h1).total_seconds() / 60 if h1 and h2 else 0.0
+                    t_carga = (h4 - h3).total_seconds() / 60 if h3 else 0.0
+                    
+                    base_date = h3 if h3 else (h1 if h1 else ahora_forzado)
+                    
+                    nuevos_registros_hist.append({
+                        "Fecha": base_date.strftime('%d-%m-%Y'),
+                        "Semana": f"Semana {base_date.isocalendar()[1]}",
+                        "Mes": ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"][base_date.month],
+                        "Empresa": fila_viaje["Empresa"], "Patente": fila_viaje["Patente"], "Chofer": fila_viaje["Chofer"], "RUT": fila_viaje["RUT"],
+                        "Ruta Auditada": "CIERRE FORZADO ADMINISTRATIVO",
+                        "Ingreso Inversa": h1.strftime('%H:%M:%S') if h1 else "N/A",
+                        "Salida Inversa": h2.strftime('%H:%M:%S') if h2 else "N/A",
+                        "Ingreso Despacho": h3.strftime('%H:%M:%S') if h3 else "N/A",
+                        "Salida Despacho": h4.strftime('%H:%M:%S'),
+                        "T. Retorno (Descarga)": formatear_a_cronometro(t_retorno) if h1 and h2 else "N/A",
+                        "T. Despacho (Carga)": formatear_a_cronometro(t_carga) if h3 else "N/A",
+                        "Minutos_Carga_Raw": round(t_retorno + t_carga, 1),
+                        "Tipo de Cierre": "Forzado" # Identificador de cierre forzado
+                    })
+                
+                # Unir al histórico e inicializar activos vacíos
+                df_nuevos_hist = pd.DataFrame(nuevos_registros_hist)
+                st.session_state.df_historial = pd.concat([st.session_state.df_historial, df_nuevos_hist], ignore_index=True)
+                st.session_state.df_activas = pd.DataFrame(columns=[
+                    "Patente", "Empresa", "Chofer", "RUT", "H1_Llegada_Inversa", 
+                    "H2_Salida_Inversa", "H3_Llegada_Despacho", "H4_Salida_Despacho", "Ruta_Auditada", "Estado"
+                ])
+                
+                # Persistencia directa en Google Sheets
+                guardar_datos_cloud(st.session_state.df_activas, "patentes_activas")
+                guardar_datos_cloud(st.session_state.df_historial, "historial_final")
+                
+                st.success("🚨 Se han cerrado de forma forzada todos los procesos activos y se han archivado correctamente.")
+                time.sleep(1.5)
+                st.rerun()
+            else:
+                st.warning("No hay procesos activos en patio para cerrar.")
+                
+        st.markdown("---")
+        st.write("### 🔗 Enlaces directos para compartir con el personal:")
         base_url = "https://control-transporte-patio-cyzw3qqhshcvvji8p7fsft.streamlit.app/"
-        
         col1, col2, col3 = st.columns(3)
         with col1:
             st.info("**🔄 Logística Inversa**")
             st.code(f"{base_url}?vista=inversa", language="text")
-            st.caption("Muestra pestañas: 1, 2 y 5")
         with col2:
             st.success("**📦 Equipo Despacho**")
             st.code(f"{base_url}?vista=despacho", language="text")
-            st.caption("Muestra pestañas: 3, 4 y 5")
         with col3:
             st.warning("**🖥️ Equipo Monitores**")
             st.code(f"{base_url}?vista=monitoreo", language="text")
-            st.caption("Muestra pestaña: 5 sola")
