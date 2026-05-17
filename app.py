@@ -18,7 +18,7 @@ BACKUP_ACTIVAS = "backup_patentes_activas.csv"
 BACKUP_HISTORIAL = "backup_historial_final.csv"
 
 # =====================================================================
-# MOTOR DE CONEXIÓN CON GOOGLE SHEETS (CON PARCHE PARA ERROR PEM)
+# MOTOR DE CONEXIÓN CON GOOGLE SHEETS
 # =====================================================================
 def conectar_google_sheets(pestaña_nombre):
     """Establece conexión segura usando los Secrets de Streamlit en formato JSON"""
@@ -31,7 +31,6 @@ def conectar_google_sheets(pestaña_nombre):
             
         creds_dict = json.loads(st.secrets["json_data"])
         
-        # Parche para el error InvalidByte (PEM): arregla los saltos de línea
         if "private_key" in creds_dict:
             creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
             
@@ -44,36 +43,55 @@ def conectar_google_sheets(pestaña_nombre):
         return None
 
 def cargar_datos_cloud(pestaña_nombre):
+    """Carga los datos y fuerza la estructura de columnas para evitar errores de memoria vieja"""
     archivo_local = BACKUP_ACTIVAS if pestaña_nombre == "patentes_activas" else BACKUP_HISTORIAL
     sheet = conectar_google_sheets(pestaña_nombre)
     
+    cols_activas = [
+        "Patente", "Empresa", "Chofer", "RUT", "H1_Llegada_Inversa", 
+        "H2_Salida_Inversa", "H3_Llegada_Despacho", "H4_Salida_Despacho", 
+        "Ruta_Auditada", "Estado"
+    ]
+    cols_hist = [
+        "Fecha", "Semana", "Mes", "Empresa", "Patente", "Chofer", "RUT", "Ruta Auditada",
+        "Ingreso Inversa", "Salida Inversa", "Ingreso Despacho", "Salida Despacho",
+        "T. Retorno (Descarga)", "T. Despacho (Carga)", "Minutos_Carga_Raw"
+    ]
+    columnas_requeridas = cols_activas if pestaña_nombre == "patentes_activas" else cols_hist
+
+    df = None
+    
+    # 1. Intentar leer desde la nube
     if sheet:
         try:
             records = sheet.get_all_records()
-            df = pd.DataFrame(records)
-            df.to_csv(archivo_local, index=False)
-            return df
-        except:
+            if records:
+                df = pd.DataFrame(records)
+        except Exception:
             pass
             
-    if os.path.exists(archivo_local):
-        try:
-            return pd.read_csv(archivo_local)
-        except:
-            pass
+    # 2. Si falla la nube o está vacía, leer el archivo local
+    if df is None or df.empty:
+        if os.path.exists(archivo_local):
+            try:
+                df_local = pd.read_csv(archivo_local)
+                if not df_local.empty:
+                    df = df_local
+            except:
+                pass
+                
+    # 3. Si todo está vacío, crear un dataframe nuevo
+    if df is None or df.empty:
+        df = pd.DataFrame(columns=columnas_requeridas)
         
-    if pestaña_nombre == "patentes_activas":
-        return pd.DataFrame(columns=[
-            "Patente", "Empresa", "Chofer", "RUT", "H1_Llegada_Inversa", 
-            "H2_Salida_Inversa", "H3_Llegada_Despacho", "H4_Salida_Despacho", 
-            "Ruta_Auditada", "Estado"
-        ])
-    else:
-        return pd.DataFrame(columns=[
-            "Fecha", "Semana", "Mes", "Empresa", "Patente", "Chofer", "RUT", "Ruta Auditada",
-            "Ingreso Inversa", "Salida Inversa", "Ingreso Despacho", "Salida Despacho",
-            "T. Retorno (Descarga)", "T. Despacho (Carga)", "Minutos_Carga_Raw"
-        ])
+    # PARCHE ANTI-ERRORES: Forzar que existan todas las columnas, aunque los datos sean viejos
+    for col in columnas_requeridas:
+        if col not in df.columns:
+            df[col] = ""
+            
+    # Guardar el estado limpio en el disco local
+    df.to_csv(archivo_local, index=False)
+    return df
 
 def guardar_datos_cloud(df, pestaña_nombre):
     archivo_local = BACKUP_ACTIVAS if pestaña_nombre == "patentes_activas" else BACKUP_HISTORIAL
@@ -276,12 +294,12 @@ if tab4:
                         "Ingreso Despacho": h3.strftime('%H:%M:%S'), "Salida Despacho": h4.strftime('%H:%M:%S'),
                         "T. Retorno (Descarga)": formatear_a_cronometro(t_retorno) if h1 else "N/A",
                         "T. Despacho (Carga)": formatear_a_cronometro(t_carga),
-                        "Minutos_Carga_Raw": round(t_retorno + t_carga, 1) # Guarda la estadía total directamente en Sheets
+                        "Minutos_Carga_Raw": round(t_retorno + t_carga, 1)
                     }])
                     
                     st.session_state.df_historial = pd.concat([st.session_state.df_historial, nuevo_hist], ignore_index=True)
                     guardar_datos_cloud(st.session_state.df_activas, "patentes_activas")
-                    guardar_datos_cloud(st.session_state.df_historial, "historial_final") # Se guarda completo con la columna nativa
+                    guardar_datos_cloud(st.session_state.df_historial, "historial_final")
                     
                     st.success("✅ Viaje archivado exitosamente.")
                     st.session_state.limpiar_salida += 1
@@ -332,7 +350,7 @@ if tab5:
             st.markdown("---")
             
             st.subheader("📈 Estadía Promedio CD")
-            # LECTURA DIRECTA Y LIMPIA DESDE LA COLUMNA DE GOOGLE SHEETS
+            # Este bloque ahora es seguro contra memorias caché antiguas
             if "Minutos_Carga_Raw" in df_filtrado_kpis.columns:
                 df_stats = df_filtrado_kpis.copy()
                 df_stats['Minutos_Carga_Raw'] = pd.to_numeric(df_stats['Minutos_Carga_Raw'], errors='coerce').fillna(0)
