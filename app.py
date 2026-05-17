@@ -1,202 +1,293 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+import datetime
 import pytz
-import gspread
-from google.oauth2.service_account import Credentials
+import os
+import time
+import json
 
-# ==============================================================================
-# CONFIGURACIÓN DE LA PÁGINA Y CONEXIÓN DIRECTA A GOOGLE SHEETS
-# ==============================================================================
-st.set_page_config(page_title="Control de Transportes - Patio", layout="wide", page_icon="🚛")
-
-# ID de tu planilla suministrada
-SPREADSHEET_ID = "19K8Mn8EGn06i1RXhTkOJrCGvVm8nriWOEbV6TT-uYeg"
+# Configuración de la página web
+st.set_page_config(page_title="Control Transportes", layout="wide", page_icon="🚚")
 zona_local = pytz.timezone('America/Santiago')
 
-# Función para conectar de forma segura usando los Secrets de Streamlit
-@st.cache_resource(ttl=600)
-def conectar_google_sheets():
+# ID de tu planilla de Google Sheets suministrada
+SPREADSHEET_ID = "19K8Mn8EGn06i1RXhTkOXrCGvVm8nriWOEbV6TT-uYEg"
+
+# Archivos de respaldo local
+BACKUP_ACTIVAS = "backup_patentes_activas.csv"
+BACKUP_HISTORIAL = "backup_historial_final.csv"
+
+# =====================================================================
+# MOTOR DE CONEXIÓN CON GOOGLE SHEETS (CON PARCHE PARA ERROR PEM)
+# =====================================================================
+def conectar_google_sheets(pestaña_nombre):
+    """Establece conexión segura usando los Secrets de Streamlit en formato JSON"""
     try:
-        # Convertimos a diccionario para poder manipular el texto de la clave de forma segura
-        credentials_info = dict(st.secrets["gspread"])
+        import gspread
+        from google.oauth2.service_account import Credentials
         
-        # SOLUCIÓN AL ERROR PEM: Corrige automáticamente los saltos de línea mal formateados en la nube
-        if "private_key" in credentials_info:
-            credentials_info["private_key"] = credentials_info["private_key"].replace("\\n", "\n")
+        if "json_data" not in st.secrets:
+            return None
             
-        scopes = [
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive"
-        ]
-        creds = Credentials.from_service_account_info(credentials_info, scopes=scopes)
+        creds_dict = json.loads(st.secrets["json_data"])
+        
+        # Parche para el error InvalidByte (PEM): arregla los saltos de línea
+        if "private_key" in creds_dict:
+            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+            
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
         client = gspread.authorize(creds)
-        sheet = client.open_by_key(SPREADSHEET_ID).get_worksheet(0) # Abre la primera pestaña
+        sheet = client.open_by_key(SPREADSHEET_ID).worksheet(pestaña_nombre)
         return sheet
     except Exception as e:
-        st.error(f"Error de conexión con Google Sheets: {e}")
         return None
 
-sheet_conexion = conectar_google_sheets()
-
-# Cargar los datos directo desde la nube a un DataFrame de Pandas
-def cargar_datos():
-    if sheet_conexion:
+def cargar_datos_cloud(pestaña_nombre):
+    archivo_local = BACKUP_ACTIVAS if pestaña_nombre == "patentes_activas" else BACKUP_HISTORIAL
+    sheet = conectar_google_sheets(pestaña_nombre)
+    
+    if sheet:
         try:
-            records = sheet_conexion.get_all_records()
-            if records:
-                df = pd.DataFrame(records)
-                # Asegurar columnas mínimas obligatorias
-                columnas_necesarias = ['Fecha/Hora', 'Modulo', 'Patente', 'Chofer', 'Empresa', 'Tiempo_Estadia_Min', 'Estado', 'Rol_Registrador']
-                for col in columnas_necesarias:
-                    if col not in df.columns:
-                        df[col] = ""
-                return df
-            else:
-                return pd.DataFrame(columns=['Fecha/Hora', 'Modulo', 'Patente', 'Chofer', 'Empresa', 'Tiempo_Estadia_Min', 'Estado', 'Rol_Registrador'])
+            records = sheet.get_all_records()
+            df = pd.DataFrame(records)
+            df.to_csv(archivo_local, index=False)
+            return df
+        except:
+            pass
+            
+    if os.path.exists(archivo_local):
+        try:
+            return pd.read_csv(archivo_local)
+        except:
+            pass
+        
+    if pestaña_nombre == "patentes_activas":
+        return pd.DataFrame(columns=[
+            "Patente", "Empresa", "Chofer", "RUT", "H1_Llegada_Inversa", 
+            "H2_Salida_Inversa", "H3_Llegada_Despacho", "H4_Salida_Despacho", 
+            "Ruta_Auditada", "Estado"
+        ])
+    else:
+        return pd.DataFrame(columns=[
+            "Fecha", "Semana", "Mes", "Empresa", "Patente", "Chofer", "RUT", "Ruta Auditada",
+            "Ingreso Inversa", "Salida Inversa", "Ingreso Despacho", "Salida Despacho",
+            "T. Retorno (Descarga)", "T. Despacho (Carga)"
+        ])
+
+def guardar_datos_cloud(df, pestaña_nombre):
+    archivo_local = BACKUP_ACTIVAS if pestaña_nombre == "patentes_activas" else BACKUP_HISTORIAL
+    df.to_csv(archivo_local, index=False)
+    
+    sheet = conectar_google_sheets(pestaña_nombre)
+    if sheet:
+        try:
+            sheet.clear()
+            sheet.update([df.columns.values.tolist()] + df.fillna("").values.tolist())
+            return True
         except Exception as e:
-            st.warning(f"No se pudieron leer registros nuevos, iniciando tabla vacía: {e}")
-    return pd.DataFrame(columns=['Fecha/Hora', 'Modulo', 'Patente', 'Chofer', 'Empresa', 'Tiempo_Estadia_Min', 'Estado', 'Rol_Registrador'])
+            pass
+    return False
 
-df_global = cargar_datos()
+# Inicialización del estado en memoria
+if "df_activas" not in st.session_state:
+    st.session_state.df_activas = cargar_datos_cloud("patentes_activas")
+if "df_historial" not in st.session_state:
+    st.session_state.df_historial = cargar_datos_cloud("historial_final")
+if "limpiar_despacho" not in st.session_state:
+    st.session_state.limpiar_despacho = 0
+if "limpiar_salida" not in st.session_state:
+    st.session_state.limpiar_salida = 0
 
-# ==============================================================================
-# NAVEGACIÓN EN EL CUERPO PRINCIPAL (SIN BARRA LATERAL)
-# ==============================================================================
-st.title("🏢 Sistema de Control de Transportes - Patio")
+def formatear_a_cronometro(minutos_decimales):
+    if pd.isna(minutos_decimales) or minutos_decimales < 0:
+        return "00:00:00"
+    total_segundos = int(round(minutos_decimales * 60))
+    horas = total_segundos // 3600
+    minutos = (total_segundos % 3600) // 60
+    segundos = total_segundos % 60
+    return f"{horas:02d}:{minutos:02d}:{segundos:02d}"
 
-# Detectar si vienen parámetros desde el enlace para cambiar de módulo automáticamente
-query_params = st.query_params
-modulo_defecto = "Monitoreo General"
+# =====================================================================
+# INTERFAZ GRÁFICA PRINCIPAL
+# =====================================================================
+st.title("🚚 Control de salidas e ingresos Transporte")
 
-if "modulo" in query_params:
-    param_val = query_params["modulo"].lower()
-    if "logistica" in param_val:
-        modulo_defecto = "Logística Inversa"
-    elif "despacho" in param_val:
-        modulo_defecto = "Despacho"
-    elif "admin" in param_val:
-        modulo_defecto = "Administrador / Estadísticas"
+# VISTA DE PESTAÑAS HORIZONTALES (Restaurado a tu diseño original)
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "📥 1. Ingreso Logística Inversa", 
+    "📤 2. Salida de Inversa", 
+    "📦 3. Ingreso a despacho", 
+    "🚪 4. Salida Despacho",
+    "📊 5. Monitoreo y KPIS"
+])
 
-# Selector de módulos principal centrado arriba
-opciones_modulos = ["Monitoreo General", "Logística Inversa", "Despacho", "Administrador / Estadísticas"]
-modulo_seleccionado = st.selectbox(
-    "📂 Seleccione el Módulo de Trabajo Actual:",
-    opciones_modulos,
-    index=opciones_modulos.index(modulo_defecto)
-)
+ahora_actual = datetime.datetime.now(zona_local)
 
-st.markdown("---")
-
-# ==============================================================================
-# DESARROLLO DE LOS MÓDULOS DE REGISTRO
-# ==============================================================================
-if modulo_seleccionado in ["Logística Inversa", "Despacho"]:
-    st.subheader(f"Formulario de Registro de Movimiento - {modulo_seleccionado}")
-    
-    with st.form("form_registro", clear_on_submit=True):
-        col1, col2 = st.columns(2)
-        with col1:
-            patente = st.text_input("Patente del Vehículo:", max_chars=8).upper().strip()
-            chofer = st.text_input("Nombre del Chofer:").title().strip()
-        with col2:
-            empresa = st.text_input("Empresa de Transporte:").upper().strip()
-            tiempo_estimado = st.number_input("Tiempo de Estadía Estimado (Minutos):", min_value=1, value=30)
-            
-        estado_unid = st.selectbox("Estado Inicial:", ["En Espera", "En Andén", "Completado"])
-        submit_btn = st.form_submit_button("Guardar Registro en Google Sheets")
+# =====================================================================
+# PESTAÑA 1: INGRESO INVERSA
+# =====================================================================
+with tab1:
+    st.header("📥 Registro de Ingreso a Logística Inversa")
+    with st.form("form_ingreso_inversa", clear_on_submit=True):
+        patente_inv = st.text_input("🚚 Patente del Camión", max_chars=6).upper().strip()
+        empresa_inv = st.text_input("🏢 Empresa de Transporte").upper().strip()
+        chofer_inv = st.text_input("👤 Nombre y apellido del Chofer").upper().strip()
+        rut_inv = st.text_input("🆔 RUT del Chofer", max_chars=10).upper().strip()
         
-        if submit_btn:
-            if patente and chofer and empresa:
-                ahora_santiago = datetime.now(zona_local).strftime("%Y-%m-%d %H:%M:%S")
-                nuevo_registro = [
-                    ahora_santiago,
-                    modulo_seleccionado,
-                    patente,
-                    chofer,
-                    empresa,
-                    int(tiempo_estimado),
-                    estado_unid,
-                    "Administrador" if modulo_seleccionado == "Logística Inversa" else "Operador"
-                ]
-                
-                # CAÍDA DE DATOS REAL A GOOGLE SHEETS
-                if sheet_conexion:
-                    try:
-                        sheet_conexion.append_row(nuevo_registro)
-                        st.success(f"✅ ¡Registro guardado exitosamente en Google Sheets! Patente: {patente}")
-                        st.rerun() 
-                    except Exception as ex:
-                        st.error(f"No se pudo guardar en la nube de Google: {ex}")
-                else:
-                    st.error("Error: Conexión con Google Sheets no disponible.")
+        if st.form_submit_button("💾 Registrar Llegada a Inversa"):
+            if not patente_inv or not empresa_inv or not chofer_inv or not rut_inv:
+                st.error("❌ Todos los campos son obligatorios.")
+            elif len(patente_inv) != 6:
+                st.error("❌ La patente debe tener exactamente 6 caracteres.")
+            elif not st.session_state.df_activas.empty and patente_inv in st.session_state.df_activas["Patente"].values:
+                st.warning("⚠️ Esta patente ya está en el patio.")
             else:
-                st.warning("⚠️ Por favor rellene todos los campos obligatorios (Patente, Chofer y Empresa).")
+                nuevo_registro = pd.DataFrame([{
+                    "Patente": patente_inv, "Empresa": empresa_inv, "Chofer": chofer_inv, "RUT": rut_inv,
+                    "H1_Llegada_Inversa": ahora_actual.isoformat(), "H2_Salida_Inversa": "",
+                    "H3_Llegada_Despacho": "", "H4_Salida_Despacho": "",
+                    "Ruta_Auditada": "", "Estado": "En Logística Inversa"
+                }])
+                st.session_state.df_activas = pd.concat([st.session_state.df_activas, nuevo_registro], ignore_index=True)
+                guardar_datos_cloud(st.session_state.df_activas, "patentes_activas")
+                st.success("✅ Registrado con éxito.")
+                time.sleep(1)
+                st.rerun()
 
-# ==============================================================================
-# MÓDULO MONITOREO GENERAL (Vistas de datos unificados)
-# ==============================================================================
-elif modulo_seleccionado == "Monitoreo General":
-    st.subheader("📋 Panel de Control de Patio en Tiempo Real")
-    st.write("Esta tabla sincroniza en tiempo real los datos ingresados desde cualquier dispositivo.")
+# =====================================================================
+# PESTAÑA 2: SALIDA INVERSA
+# =====================================================================
+with tab2:
+    st.header("📤 Registro de Salida de Logística Inversa")
+    lista_inv = st.session_state.df_activas[st.session_state.df_activas["Estado"] == "En Logística Inversa"]["Patente"].tolist() if not st.session_state.df_activas.empty else []
     
-    if not df_global.empty:
-        st.dataframe(df_global, use_container_width=True)
-    else:
-        st.info("No hay registros guardados en la planilla aún.")
+    patente_salida_inv = st.selectbox("Seleccione Patente:", [""] + lista_inv, key="sel_salida_inv")
+    if st.button("📤 Confirmar Salida de Inversa"):
+        if patente_salida_inv:
+            idx = st.session_state.df_activas[st.session_state.df_activas["Patente"] == patente_salida_inv].index[0]
+            st.session_state.df_activas.at[idx, "H2_Salida_Inversa"] = ahora_actual.isoformat()
+            st.session_state.df_activas.at[idx, "Estado"] = "Esperando Despacho"
+            guardar_datos_cloud(st.session_state.df_activas, "patentes_activas")
+            st.success("✅ Salida confirmada.")
+            time.sleep(1)
+            st.rerun()
 
-# ==============================================================================
-# MÓDULO ADMINISTRADOR Y TABLAS DE PROMEDIOS (Punto 1)
-# ==============================================================================
-elif modulo_seleccionado == "Administrador / Estadísticas":
-    st.subheader("📊 Cuadro de Mando: Análisis de Promedios de Estadía")
+# =====================================================================
+# PESTAÑA 3: INGRESO DESPACHO
+# =====================================================================
+with tab3:
+    st.header("📦 Registro de Ingreso a Despacho")
+    lista_espera = st.session_state.df_activas[st.session_state.df_activas["Estado"] == "Esperando Despacho"]["Patente"].tolist() if not st.session_state.df_activas.empty else []
     
-    if not df_global.empty:
-        # Asegurarse de que el tiempo de estadía sea numérico para sacar promedios exactos
-        df_global['Tiempo_Estadia_Min'] = pd.to_numeric(df_global['Tiempo_Estadia_Min'], errors='coerce').fillna(0)
-        
-        # FILTROS RÁPIDOS MÓDULO
-        mod_filtro = st.multiselect("Filtrar por Módulo de origen:", options=df_global['Modulo'].unique(), default=df_global['Modulo'].unique())
-        df_filtrado = df_global[df_global['Modulo'].isin(mod_filtro)]
-        
-        # DISEÑO DE TABLAS DE PROMEDIOS SOLICITADAS
-        tab1, tab2, tab3 = st.tabs(["📈 Promedio por Empresa", "👨‍✈️ Promedio por Chofer", "📇 Promedio por Patente"])
-        
-        with tab1:
-            st.markdown("#### Tiempo Promedio de Estadía por Empresa de Transporte")
-            prom_empresa = df_filtrado.groupby('Empresa')['Tiempo_Estadia_Min'].agg(['mean', 'count']).reset_index()
-            prom_empresa.columns = ['Empresa de Transporte', 'Tiempo Promedio (Minutos)', 'Cantidad de Viajes']
-            prom_empresa['Tiempo Promedio (Minutos)'] = prom_empresa['Tiempo Promedio (Minutos)'].round(1)
-            st.dataframe(prom_empresa.sort_values(by='Tiempo Promedio (Minutos)', ascending=False), use_container_width=True)
+    patente_desp = st.selectbox("Buscar Patente:", [""] + lista_espera).upper().strip()
+    
+    if patente_desp:
+        fila = st.session_state.df_activas[st.session_state.df_activas["Patente"] == patente_desp].iloc[0]
+        with st.form(f"form_despacho_{st.session_state.limpiar_despacho}"):
+            empresa_f = st.text_input("🏢 Empresa", value=fila["Empresa"]).upper().strip()
+            chofer_f = st.text_input("👤 Chofer", value=fila["Chofer"]).upper().strip()
+            rut_f = st.text_input("🆔 RUT", value=fila["RUT"]).upper().strip()
             
-        with tab2:
-            st.markdown("#### Tiempo Promedio de Estadía por Chofer")
-            prom_chofer = df_filtrado.groupby('Chofer')['Tiempo_Estadia_Min'].agg(['mean', 'count']).reset_index()
-            prom_chofer.columns = ['Nombre del Chofer', 'Tiempo Promedio (Minutos)', 'Cantidad de Viajes']
-            prom_chofer['Tiempo Promedio (Minutos)'] = prom_chofer['Tiempo Promedio (Minutos)'].round(1)
-            st.dataframe(prom_chofer.sort_values(by='Tiempo Promedio (Minutos)', ascending=False), use_container_width=True)
-            
-        with tab3:
-            st.markdown("#### Tiempo Promedio de Estadía por Patente")
-            prom_patente = df_filtrado.groupby('Patente')['Tiempo_Estadia_Min'].agg(['mean', 'count']).reset_index()
-            prom_patente.columns = ['Patente del Vehículo', 'Tiempo Promedio (Minutos)', 'Cantidad de Viajes']
-            prom_patente['Tiempo Promedio (Minutos)'] = prom_patente['Tiempo Promedio (Minutos)'].round(1)
-            st.dataframe(prom_patente.sort_values(by='Tiempo Promedio (Minutos)', ascending=False), use_container_width=True)
-            
-        # Vista Completa de Auditoría
-        st.markdown("---")
-        st.markdown("#### 🔍 Historial Completo de Auditoría de Administrador")
-        st.dataframe(df_filtrado, use_container_width=True)
-    else:
-        st.info("No hay datos suficientes en Google Sheets para calcular promedios estadísticos.")
+            if st.form_submit_button("📥 Registrar Entrada a Carga"):
+                idx = st.session_state.df_activas[st.session_state.df_activas["Patente"] == patente_desp].index[0]
+                st.session_state.df_activas.at[idx, "Empresa"] = empresa_f
+                st.session_state.df_activas.at[idx, "Chofer"] = chofer_f
+                st.session_state.df_activas.at[idx, "RUT"] = rut_f
+                st.session_state.df_activas.at[idx, "H3_Llegada_Despacho"] = ahora_actual.isoformat()
+                st.session_state.df_activas.at[idx, "Estado"] = "En Despacho (Cargando)"
+                guardar_datos_cloud(st.session_state.df_activas, "patentes_activas")
+                st.success("✅ Posicionado en Despacho.")
+                st.session_state.limpiar_despacho += 1
+                time.sleep(1)
+                st.rerun()
 
-# ==============================================================================
-# CONTENEDOR DE ENLACES COMPARTIBLES AL FINAL DE LA PÁGINA
-# ==============================================================================
-st.markdown("---")
-with st.expander("🔗 Enlaces directos para compartir con otros PC"):
-    url_base = "https://control-transporte-patio-cyzw3qqhshcvvji8p7fsft.streamlit.app" # Tu URL actual de producción
-    st.write(f"Puedes copiar y enviar estos enlaces para que entren directamente al módulo correspondiente desde cualquier computador:")
-    st.code(f"Módulo Logística Inversa: {url_base}/?modulo=Logistica")
-    st.code(f"Módulo Despacho:           {url_base}/?modulo=Despacho")
-    st.code(f"Módulo Administrador:       {url_base}/?modulo=Admin")
+# =====================================================================
+# PESTAÑA 4: SALIDA DESPACHO (FINALIZA CICLO)
+# =====================================================================
+with tab4:
+    st.header("🚪 Control de Salida Despacho")
+    lista_cargando = st.session_state.df_activas[st.session_state.df_activas["Estado"] == "En Despacho (Cargando)"]["Patente"].tolist() if not st.session_state.df_activas.empty else []
+    
+    with st.form(f"form_salida_{st.session_state.limpiar_salida}"):
+        patente_final = st.selectbox("Patente que termina Carga:", [""] + lista_cargando)
+        ruta_aud = st.text_input("📋 Ruta Auditada:").upper().strip()
+        
+        if st.form_submit_button("🏁 Confirmar Salida y Archivar"):
+            if patente_final and ruta_aud:
+                fila_viaje = st.session_state.df_activas[st.session_state.df_activas["Patente"] == patente_final].iloc[0].copy()
+                st.session_state.df_activas = st.session_state.df_activas[st.session_state.df_activas["Patente"] != patente_final]
+                
+                h1 = datetime.datetime.fromisoformat(fila_viaje["H1_Llegada_Inversa"]) if pd.notna(fila_viaje["H1_Llegada_Inversa"]) and fila_viaje["H1_Llegada_Inversa"] else None
+                h2 = datetime.datetime.fromisoformat(fila_viaje["H2_Salida_Inversa"]) if pd.notna(fila_viaje["H2_Salida_Inversa"]) and fila_viaje["H2_Salida_Inversa"] else None
+                h3 = datetime.datetime.fromisoformat(fila_viaje["H3_Llegada_Despacho"])
+                h4 = ahora_actual
+                
+                t_retorno = (h2 - h1).total_seconds() / 60 if h1 and h2 else None
+                t_carga = (h4 - h3).total_seconds() / 60
+                
+                nuevo_hist = pd.DataFrame([{
+                    "Fecha": h3.strftime('%d-%m-%Y'), "Semana": f"Semana {h3.isocalendar()[1]}",
+                    "Mes": ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"][h3.month],
+                    "Empresa": fila_viaje["Empresa"], "Patente": patente_final, "Chofer": fila_viaje["Chofer"], 
+                    "RUT": fila_viaje["RUT"], "Ruta Auditada": ruta_aud,
+                    "Ingreso Inversa": h1.strftime('%H:%M:%S') if h1 else "N/A",
+                    "Salida Inversa": h2.strftime('%H:%M:%S') if h2 else "N/A",
+                    "Ingreso Despacho": h3.strftime('%H:%M:%S'), "Salida Despacho": h4.strftime('%H:%M:%S'),
+                    "T. Retorno (Descarga)": formatear_a_cronometro(t_retorno) if t_retorno is not None else "N/A",
+                    "T. Despacho (Carga)": formatear_a_cronometro(t_carga),
+                    "Minutos_Carga_Raw": t_carga # Dato oculto para promedios
+                }])
+                
+                st.session_state.df_historial = pd.concat([st.session_state.df_historial, nuevo_hist], ignore_index=True)
+                guardar_datos_cloud(st.session_state.df_activas, "patentes_activas")
+                
+                # Al guardar en Google Sheets, omitimos la columna temporal 'Minutos_Carga_Raw' para no romper tu formato
+                df_guardar_hist = st.session_state.df_historial.drop(columns=["Minutos_Carga_Raw"], errors='ignore')
+                guardar_datos_cloud(df_guardar_hist, "historial_final")
+                
+                st.success("✅ Viaje archivado.")
+                st.session_state.limpiar_salida += 1
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.error("Rellene todos los campos.")
+
+# =====================================================================
+# PESTAÑA 5: MONITOREO Y PROMEDIOS
+# =====================================================================
+with tab5:
+    st.header("📊 Monitor de Patio y Estadísticas")
+    
+    st.subheader("🚚 Vehículos actualmente en patio")
+    if not st.session_state.df_activas.empty:
+        st.dataframe(st.session_state.df_activas[["Patente", "Empresa", "Chofer", "Estado"]], use_container_width=True)
+    else:
+        st.info("No hay vehículos en patio.")
+        
+    st.markdown("---")
+    
+    st.subheader("📈 Estadísticas de Tiempos Promedio (Despacho)")
+    if not st.session_state.df_historial.empty and "Minutos_Carga_Raw" in st.session_state.df_historial.columns:
+        df_stats = st.session_state.df_historial.copy()
+        df_stats['Minutos_Carga_Raw'] = pd.to_numeric(df_stats['Minutos_Carga_Raw'], errors='coerce')
+        
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.markdown("**Por Empresa**")
+            st.dataframe(df_stats.groupby("Empresa")["Minutos_Carga_Raw"].mean().round(1).reset_index().rename(columns={"Minutos_Carga_Raw": "Minutos Promedio"}), use_container_width=True)
+        with c2:
+            st.markdown("**Por Chofer**")
+            st.dataframe(df_stats.groupby("Chofer")["Minutos_Carga_Raw"].mean().round(1).reset_index().rename(columns={"Minutos_Carga_Raw": "Minutos Promedio"}), use_container_width=True)
+        with c3:
+            st.markdown("**Por Patente**")
+            st.dataframe(df_stats.groupby("Patente")["Minutos_Carga_Raw"].mean().round(1).reset_index().rename(columns={"Minutos_Carga_Raw": "Minutos Promedio"}), use_container_width=True)
+    else:
+        st.info("Los promedios se calcularán cuando se complete el primer ciclo de salida de despacho.")
+        
+    st.markdown("---")
+    
+    st.subheader("📋 Consolidado Histórico")
+    if not st.session_state.df_historial.empty:
+        df_mostrar = st.session_state.df_historial.drop(columns=["Minutos_Carga_Raw"], errors='ignore')
+        st.dataframe(df_mostrar, use_container_width=True)
