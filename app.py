@@ -154,6 +154,19 @@ else:
     ]
     subtitulo_pantalla = "👑 Módulo Global: ADMINISTRACIÓN"
 
+# ENCABEZADO CON BOTÓN DE SINCRONIZACIÓN GLOBAL
+col_tit, col_sync = st.columns([8, 2])
+with col_tit:
+    st.title("🚚 Control de salidas e ingresos Transporte")
+    st.caption(subtitulo_pantalla)
+with col_sync:
+    st.write("") # Espacio para alinear verticalmente
+    if st.button("🔄 Sincronizar Nube"):
+        with st.spinner("Descargando datos..."):
+            st.session_state.df_activas = cargar_datos_cloud("patentes_activas")
+            st.session_state.df_historial = cargar_datos_cloud("historial_final")
+        st.rerun()
+
 pestañas_creadas = st.tabs(titulos_pestañas)
 
 idx = 0
@@ -237,7 +250,7 @@ if tab3:
             fila = st.session_state.df_activas[st.session_state.df_activas["Patente"] == patente_desp].iloc[0]
             
             if fila["Estado"] == "En Logística Inversa":
-                st.error("⛔ RESTRICCIÓN ACTIVA: Este vehículo no ha registrado su SALIDA desde Logística Inversa (Módulo 2). El registro en Despacho está completamente bloqueado.")
+                st.error("⛔ RESTRICCIÓN ACTIVA: Este vehículo no ha registrado su SALIDA desde Logística Inversa (Módulo 2). El registro en Despacho está completamente bloqueado. (Si el equipo de Inversa ya le dio salida, presiona el botón '🔄 Sincronizar Nube' arriba).")
             
             with st.form(f"form_despacho_{st.session_state.limpiar_despacho}"):
                 empresa_f = st.text_input("🏢 Empresa", value=fila["Empresa"]).upper().strip()
@@ -322,12 +335,14 @@ if tab5:
     with tab5:
         st.header("📊 Monitor de Patio y Estadísticas")
         
-        # Estructura del botón de refresco alineado a la derecha
-        col_tit, col_btn = st.columns([8, 2])
-        with col_tit:
+        col_tit_mon, col_btn_mon = st.columns([8, 2])
+        with col_tit_mon:
             st.subheader("🚚 Vehículos en CD")
-        with col_btn:
+        with col_btn_mon:
             if st.button("🔄 Actualizar Tiempos en Vivo"):
+                # También descarga la info limpia al hacer clic aquí
+                with st.spinner("Actualizando..."):
+                    st.session_state.df_activas = cargar_datos_cloud("patentes_activas")
                 st.rerun()
                 
         if not st.session_state.df_activas.empty:
@@ -371,7 +386,6 @@ if tab5:
             df_en_patio["T. Retorno (Descarga)"] = t_retornos
             df_en_patio["T. Despacho (Carga)"] = t_cargas
             
-            # Nuevo orden de las columnas según lo solicitado
             columnas_mostrar = [
                 "Patente", "Empresa", "Chofer", "Estado", 
                 "Ingreso Inversa", "Salida Inversa", "T. Retorno (Descarga)",
