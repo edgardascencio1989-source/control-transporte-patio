@@ -108,7 +108,6 @@ if "df_activas" not in st.session_state:
 if "df_historial" not in st.session_state:
     st.session_state.df_historial = cargar_datos_cloud("historial_final")
 
-# Llaves dinámicas para limpiar formularios SOLO cuando no hay errores
 if "limpiar_inversa" not in st.session_state:
     st.session_state.limpiar_inversa = 0
 if "limpiar_despacho" not in st.session_state:
@@ -176,7 +175,6 @@ ahora_actual = datetime.datetime.now(zona_local)
 if tab1:
     with tab1:
         st.header("📥 Registro de Ingreso a Logística Inversa")
-        # El formulario ahora usa una llave dinámica en lugar de clear_on_submit=True
         with st.form(f"form_ingreso_inversa_{st.session_state.limpiar_inversa}"):
             patente_inv = st.text_input("🚚 Patente del Camión", max_chars=6, help="Largo exacto de 6 caracteres").upper().strip()
             empresa_inv = st.text_input("🏢 Empresa de Transporte").upper().strip()
@@ -203,7 +201,6 @@ if tab1:
                     guardar_datos_cloud(st.session_state.df_activas, "patentes_activas")
                     st.success("✅ Registrado con éxito.")
                     
-                    # Incrementamos la llave solo si guardó con éxito, lo que limpiará el formulario
                     st.session_state.limpiar_inversa += 1
                     time.sleep(1)
                     st.rerun()
@@ -264,7 +261,6 @@ if tab3:
                         guardar_datos_cloud(st.session_state.df_activas, "patentes_activas")
                         st.success("✅ Posicionado en Despacho con éxito.")
                         
-                        # Incrementamos la llave solo si guardó con éxito
                         st.session_state.limpiar_despacho += 1
                         time.sleep(1)
                         st.rerun()
@@ -313,7 +309,6 @@ if tab4:
                     
                     st.success("✅ Viaje archivado exitosamente.")
                     
-                    # Incrementamos la llave solo si guardó con éxito
                     st.session_state.limpiar_salida += 1
                     time.sleep(1)
                     st.rerun()
@@ -327,7 +322,14 @@ if tab5:
     with tab5:
         st.header("📊 Monitor de Patio y Estadísticas")
         
-        st.subheader("🚚 Vehículos en CD")
+        # Estructura del botón de refresco alineado a la derecha
+        col_tit, col_btn = st.columns([8, 2])
+        with col_tit:
+            st.subheader("🚚 Vehículos en CD")
+        with col_btn:
+            if st.button("🔄 Actualizar Tiempos en Vivo"):
+                st.rerun()
+                
         if not st.session_state.df_activas.empty:
             df_en_patio = st.session_state.df_activas.copy()
             ahora_actual_calc = datetime.datetime.now(zona_local)
@@ -369,10 +371,11 @@ if tab5:
             df_en_patio["T. Retorno (Descarga)"] = t_retornos
             df_en_patio["T. Despacho (Carga)"] = t_cargas
             
+            # Nuevo orden de las columnas según lo solicitado
             columnas_mostrar = [
                 "Patente", "Empresa", "Chofer", "Estado", 
-                "Ingreso Inversa", "Salida Inversa", "Ingreso Despacho", "Salida Despacho", 
-                "T. Retorno (Descarga)", "T. Despacho (Carga)"
+                "Ingreso Inversa", "Salida Inversa", "T. Retorno (Descarga)",
+                "Ingreso Despacho", "Salida Despacho", "T. Despacho (Carga)"
             ]
             st.dataframe(df_en_patio[columnas_mostrar], use_container_width=True)
         else:
