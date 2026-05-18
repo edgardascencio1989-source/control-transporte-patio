@@ -232,17 +232,16 @@ if tab2:
                 st.rerun()
 
 # =====================================================================
-# PESTAÑA 3: INGRESO DESPACHO (CON FILTRADO Y FORMULARIO DE REFRESCADO DE INVERSA)
+# PESTAÑA 3: INGRESO DESPACHO (CON LÓGICA DE CHOFER 2)
 # =====================================================================
 if tab3:
     with tab3:
         st.header("📦 Registro de Ingreso a Despacho")
         
-        # CAMBIO: text_input para permitir digitar patentes libres
         patente_desp = st.text_input("🚚 Digite Patente para Despacho:", max_chars=6, key=f"txt_desp_{st.session_state.limpiar_despacho}").upper().strip()
         
         if len(patente_desp) == 6:
-            # Caso 1: La patente ya está registrada en el sistema de Patio
+            # CASO 1: LA PATENTE SÍ VIENE DE INVERSA
             if not st.session_state.df_activas.empty and patente_desp in st.session_state.df_activas["Patente"].values:
                 fila = st.session_state.df_activas[st.session_state.df_activas["Patente"] == patente_desp].iloc[0]
                 
@@ -254,7 +253,6 @@ if tab3:
                 elif fila["Estado"] == "En Despacho (Cargando)":
                     st.info(f"✅ La patente {patente_desp} ya fue ingresada a Despacho exitosamente. Está en proceso de carga.")
                 else:
-                    # Formulario normal de posicionamiento para Despacho
                     with st.form("form_despacho_inner"):
                         st.write("### Datos de Vehículo Habilitado")
                         empresa_f = st.text_input("🏢 Empresa", value=fila["Empresa"]).upper().strip()
@@ -270,11 +268,44 @@ if tab3:
                                 idx = st.session_state.df_activas[st.session_state.df_activas["Patente"] == patente_desp].index[0]
                                 st.session_state.df_activas.at[idx, "Empresa"] = empresa_f
                                 
-                                # MEJORA COMPROBACIÓN CONDUCTOR 2:
+                                # ==========================================
+                                # LÓGICA DE PARTICIÓN DE HISTORIAL (CHOFER 2)
+                                # ==========================================
                                 if chofer_f != fila["Chofer"] or rut_f != fila["RUT"]:
-                                    st.session_state.df_activas.at[idx, "Chofer_2"] = chofer_f
-                                    st.session_state.df_activas.at[idx, "RUT_2"] = rut_f
-                                
+                                    h1_str = fila["H1_Llegada_Inversa"]
+                                    h2_str = fila["H2_Salida_Inversa"]
+                                    h1 = datetime.datetime.fromisoformat(h1_str) if pd.notna(h1_str) and h1_str else None
+                                    h2 = datetime.datetime.fromisoformat(h2_str) if pd.notna(h2_str) and h2_str else None
+                                    t_retorno = (h2 - h1).total_seconds() / 60 if h1 and h2 else 0.0
+
+                                    # 1. Archivar el tramo completado del Chofer 1 en el Historial
+                                    nuevo_hist_c1 = pd.DataFrame([{
+                                        "Fecha": ahora_actual.strftime('%d-%m-%Y'),
+                                        "Semana": f"Semana {ahora_actual.isocalendar()[1]}",
+                                        "Mes": ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"][ahora_actual.month],
+                                        "Empresa": empresa_f, "Patente": patente_desp, "Chofer": fila["Chofer"], "RUT": fila["RUT"],
+                                        "Ruta Auditada": f"CAMBIO CONDUCTOR (ENTREGA A {chofer_f})",
+                                        "Ingreso Inversa": h1.strftime('%H:%M:%S') if h1 else "N/A",
+                                        "Salida Inversa": h2.strftime('%H:%M:%S') if h2 else "N/A",
+                                        "Ingreso Despacho": "N/A", "Salida Despacho": "N/A",
+                                        "T. Retorno (Descarga)": formatear_a_cronometro(t_retorno) if h1 else "N/A",
+                                        "T. Despacho (Carga)": "N/A",
+                                        "Minutos_Carga_Raw": round(t_retorno, 1),
+                                        "Tipo de Cierre": "Cambio Conductor",
+                                        "Chofer 2": chofer_f, "RUT Chofer 2": rut_f
+                                    }])
+                                    st.session_state.df_historial = pd.concat([st.session_state.df_historial, nuevo_hist_c1], ignore_index=True)
+                                    guardar_datos_cloud(st.session_state.df_historial, "historial_final")
+
+                                    # 2. Actualizar el vehículo activo con el Chofer 2 (para que herede H1 y H2)
+                                    st.session_state.df_activas.at[idx, "Chofer_2"] = fila["Chofer"]
+                                    st.session_state.df_activas.at[idx, "RUT_2"] = fila["RUT"]
+                                    st.session_state.df_activas.at[idx, "Chofer"] = chofer_f
+                                    st.session_state.df_activas.at[idx, "RUT"] = rut_f
+                                else:
+                                    st.session_state.df_activas.at[idx, "Chofer"] = chofer_f
+                                    st.session_state.df_activas.at[idx, "RUT"] = rut_f
+
                                 st.session_state.df_activas.at[idx, "H3_Llegada_Despacho"] = ahora_actual.isoformat()
                                 st.session_state.df_activas.at[idx, "Estado"] = "En Despacho (Cargando)"
                                 guardar_datos_cloud(st.session_state.df_activas, "patentes_activas")
@@ -283,7 +314,7 @@ if tab3:
                                 time.sleep(1)
                                 st.rerun()
             
-            # Caso 2: MEJORA - Patente NO registrada en Inversa (Abre el mismo formulario de Inversa)
+            # CASO 2: FORMULARIO DE CONTINGENCIA (Patente NO registrada en Inversa)
             else:
                 st.warning("⚠️ Esta patente no registra ingreso previo en Logística Inversa. Se abrirá el formulario de registro obligatorio.")
                 with st.form("form_ingreso_directo_contingencia"):
@@ -298,7 +329,6 @@ if tab3:
                         elif len(rut_directo) < 9 or len(rut_directo) > 10:
                             st.error("❌ El RUT debe tener entre 9 y 10 caracteres.")
                         else:
-                            # Se crea el registro omitiendo tiempos de Inversa saltando directo a Esperando Despacho
                             nuevo_registro = pd.DataFrame([{
                                 "Patente": patente_desp, "Empresa": empresa_directa, "Chofer": chofer_directo, "RUT": rut_directo,
                                 "H1_Llegada_Inversa": "", "H2_Salida_Inversa": "",
@@ -351,7 +381,7 @@ if tab4:
                         "T. Despacho (Carga)": formatear_a_cronometro(t_carga),
                         "Minutos_Carga_Raw": round(t_retorno + t_carga, 1),
                         "Tipo de Cierre": "Normal",
-                        "Chofer 2": fila_viaje["Chofer_2"], # Registro Conductor 2 en historial
+                        "Chofer 2": fila_viaje["Chofer_2"],
                         "RUT Chofer 2": fila_viaje["RUT_2"]
                     }])
                     
@@ -367,7 +397,7 @@ if tab4:
                     st.error("Rellene todos los campos.")
 
 # =====================================================================
-# PESTAÑA 5: MONITOREO Y KPIS (BLINDADO CONTRA DESAPARECER FILTROS)
+# PESTAÑA 5: MONITOREO Y KPIS
 # =====================================================================
 if tab5:
     with tab5:
@@ -432,7 +462,6 @@ if tab5:
             
         st.markdown("---")
         
-        # MEJORA: Los filtros de reportería quedan fuera del condicional de vaciado para evitar que desaparezcan
         st.subheader("🔍 Filtros de Reportería")
         if not st.session_state.df_historial.empty:
             col_f1, col_f2, col_f3 = st.columns(3)
@@ -454,9 +483,8 @@ if tab5:
             if filtro_mes != "Todos":
                 df_filtrado_kpis = df_filtrado_kpis[df_filtrado_kpis["Mes"] == filtro_mes]
                 
-            # Comprobación de DataFrame vacío movida abajo de los filtros para no ocultarlos nunca
             if df_filtrado_kpis.empty:
-                st.warning("⚠️ No hay datos registrados en el historial que coincidan con la combinación de filtros seleccionada. Cambia los filtros arriba.")
+                st.warning("⚠️ No hay datos registrados en el historial que coincidan con la combinación de filtros seleccionada.")
             else:
                 st.subheader("📋 Consolidado Histórico")
                 st.dataframe(df_filtrado_kpis.drop(columns=["Minutos_Carga_Raw"], errors='ignore'), use_container_width=True)
@@ -470,8 +498,11 @@ if tab5:
                     df_stats['Min_Desp'] = df_stats['T. Despacho (Carga)'].apply(cronometro_a_minutos)
                     df_stats['Min_Total'] = df_stats['Min_Inv'] + df_stats['Min_Desp']
                     
+                    # PROTECCIÓN DE CÁLCULO: Excluir los cierres parciales por Cambio de Conductor para los promedios globales de empresa y patente
+                    df_vehiculos = df_stats[df_stats["Tipo de Cierre"] != "Cambio Conductor"]
+                    
                     st.markdown("#### 🏢 Promedio Por Empresa")
-                    df_emp = df_stats.groupby("Empresa")[["Min_Inv", "Min_Desp", "Min_Total"]].mean().reset_index()
+                    df_emp = df_vehiculos.groupby("Empresa")[["Min_Inv", "Min_Desp", "Min_Total"]].mean().reset_index()
                     df_emp["Promedio Inversa"] = df_emp["Min_Inv"].apply(formatear_a_cronometro)
                     df_emp["Promedio Despacho"] = df_emp["Min_Desp"].apply(formatear_a_cronometro)
                     df_emp["Promedio Total CD"] = df_emp["Min_Total"].apply(formatear_a_cronometro)
@@ -480,6 +511,7 @@ if tab5:
                     st.markdown("<br>", unsafe_allow_html=True)
                     
                     st.markdown("#### 👨‍✈️ Promedio Por Chofer")
+                    # El chofer SÍ incluye todos los registros para promediar correctamente sus tiempos parciales
                     df_chof = df_stats.groupby("Chofer")[["Min_Inv", "Min_Desp", "Min_Total"]].mean().reset_index()
                     df_chof["Promedio Inversa"] = df_chof["Min_Inv"].apply(formatear_a_cronometro)
                     df_chof["Promedio Despacho"] = df_chof["Min_Desp"].apply(formatear_a_cronometro)
@@ -489,11 +521,13 @@ if tab5:
                     st.markdown("<br>", unsafe_allow_html=True)
                     
                     st.markdown("#### 📇 Promedio Por Patente")
-                    df_pat = df_stats.groupby("Patente")[["Min_Inv", "Min_Desp", "Min_Total"]].mean().reset_index()
+                    df_pat = df_vehiculos.groupby("Patente")[["Min_Inv", "Min_Desp", "Min_Total"]].mean().reset_index()
                     df_pat["Promedio Inversa"] = df_pat["Min_Inv"].apply(formatear_a_cronometro)
                     df_pat["Promedio Despacho"] = df_pat["Min_Desp"].apply(formatear_a_cronometro)
                     df_pat["Promedio Total CD"] = df_pat["Min_Total"].apply(formatear_a_cronometro)
                     st.dataframe(df_pat[["Patente", "Promedio Inversa", "Promedio Despacho", "Promedio Total CD"]], use_container_width=True)
+                else:
+                    st.info("No hay suficientes datos de tiempo registrados para calcular promedios.")
         else:
             st.info("No hay datos históricos registrados en la planilla para aplicar filtros.")
 
