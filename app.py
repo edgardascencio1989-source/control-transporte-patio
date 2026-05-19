@@ -18,58 +18,39 @@ BACKUP_ACTIVAS = "backup_patentes_activas.csv"
 BACKUP_HISTORIAL = "backup_historial_final.csv"
 
 # =====================================================================
-# MOTOR DE CONEXIÓN CON GOOGLE SHEETS (CORREGIDO PARA EVITAR ERROR PEM)
+# MOTOR DE CONEXIÓN CON GOOGLE SHEETS (LECTURA DIRECTA DE ARCHIVO)
 # =====================================================================
 def conectar_google_sheets(pestaña_nombre):
     try:
         import gspread
         from google.oauth2.service_account import Credentials
         
-        # 1. Verificar si existen los secretos
-        if "json_data" not in st.secrets:
-            st.error("❌ ERROR: No se encontró la variable 'json_data' en los Secrets de Streamlit.")
-            st.stop()
-            return None
-            
-        # 2. Intentar decodificar el JSON
-        try:
-            creds_dict = json.loads(st.secrets["json_data"])
-        except Exception as json_err:
-            st.error(f"❌ ERROR DE FORMATO: El texto pegado en Streamlit Secrets no es un JSON válido. Detalles: {str(json_err)}")
-            st.stop()
-            return None
+        # Ruta del archivo que acabas de renombrar en GitHub
+        ruta_json = "key.json"
         
-        # 🛠️ CORRECCIÓN CRÍTICA DE LA PRIVATE KEY (Evita el error 'Unable to load PEM file')
-        if "private_key" in creds_dict:
-            pk = creds_dict["private_key"]
-            # Limpiar barras duplicadas o mal formateadas
-            pk = pk.replace("\\\\n", "\n").replace("\\n", "\n")
-            
-            # Si por alguna razón quedó todo pegado en una sola línea sin saltos correctos, los reconstruimos
-            if "-----BEGIN PRIVATE KEY-----" in pk and "\n" not in pk.replace("-----BEGIN PRIVATE KEY-----", ""):
-                pk = pk.replace("-----BEGIN PRIVATE KEY-----", "-----BEGIN PRIVATE KEY-----\n")
-                pk = pk.replace("-----END PRIVATE KEY-----", "\n-----END PRIVATE KEY-----")
-                
-            creds_dict["private_key"] = pk
+        if not os.path.exists(ruta_json):
+            st.error("❌ ERROR: No se encontró el archivo 'key.json' en el repositorio. Asegúrate de haberlo nombrado correctamente.")
+            st.stop()
+            return None
             
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+        
+        # Conexión limpia y directa leyendo el archivo físico, evitando fallos de formato PEM
+        creds = Credentials.from_service_account_file(ruta_json, scopes=scope)
         client = gspread.authorize(creds)
         
-        # 3. Intentar abrir la planilla por ID
         try:
             spreadsheet = client.open_by_key(SPREADSHEET_ID)
         except Exception as spread_err:
-            st.error(f"❌ ERROR DE ACCESO: El bot ({creds_dict.get('client_email')}) no pudo entrar a la planilla. Verifica que este correo exacto esté como 'Editor' en el botón Compartir de tu Sheets. Detalles: {str(spread_err)}")
+            st.error(f"❌ ERROR DE ACCESO: El bot no pudo entrar a la planilla. Verifica que el correo del bot esté como 'Editor' en tu Sheets. Detalles: {str(spread_err)}")
             st.stop()
             return None
             
-        # 4. Intentar abrir la pestaña específica
         try:
             sheet = spreadsheet.worksheet(pestaña_nombre)
             return sheet
         except Exception as work_err:
-            st.error(f"❌ ERROR DE PESTAÑA: Se abrió el archivo, pero no existe la pestaña llamada '{pestaña_nombre}'. Detalles: {str(work_err)}")
+            st.error(f"❌ ERROR DE PESTAÑA: Archivo abierto, pero no existe la pestaña '{pestaña_nombre}'. Detalles: {str(work_err)}")
             st.stop()
             return None
             
@@ -141,7 +122,7 @@ def guardar_datos_cloud(df, pestaña_nombre):
     return False
 
 # =====================================================================
-# ACTUALIZACIÓN SILENCIOSA Y LLAVES DE LIMPIEZA INTELIGENTE
+# INICIALIZACIÓN DE ARCHIVOS
 # =====================================================================
 st.session_state.df_activas = cargar_datos_cloud("patentes_activas")
 st.session_state.df_historial = cargar_datos_cloud("historial_final")
@@ -301,7 +282,7 @@ if tab3:
                         
                         if st.form_submit_button("📥 Registrar Entrada a Carga"):
                             if len(rut_f) < 9 or len(rut_f) > 10:
-                               _f = st.error("❌ El RUT debe tener entre 9 y 10 caracteres.")
+                               st.error("❌ El RUT debe tener entre 9 y 10 caracteres.")
                             else:
                                 idx = st.session_state.df_activas[st.session_state.df_activas["Patente"] == patente_desp].index[0]
                                 st.session_state.df_activas.at[idx, "Empresa"] = empresa_f
@@ -455,7 +436,7 @@ if tab5:
                 h4 = datetime.datetime.fromisoformat(row["H4_Salida_Despacho"]) if pd.notna(row["H4_Salida_Despacho"]) and row["H4_Salida_Despacho"] else None
                 
                 ingresos_inv.append(h1.strftime('%H:%M:%S') if h1 else "N/A")
-                salidas_inv.append(h2.strftime('%H:%M:%S') if h2 else "N/A")
+                salidas_inv.append(h2.strftime('%H:%M:%S) if h2 else "N/A")
                 ingresos_desp.append(h3.strftime('%H:%M:%S') if h3 else "N/A")
                 salidas_desp.append(h4.strftime('%H:%M:%S') if h4 else "N/A")
                 
