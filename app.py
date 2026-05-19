@@ -226,7 +226,7 @@ if tab1:
                 elif len(rut_inv) < 9 or len(rut_inv) > 10:
                     st.error(f"❌ El RUT ingresado tiene {len(rut_inv)} caracteres. Debe tener un mínimo de 9 y un máximo de 10 caracteres.")
                 elif not st.session_state.df_activas.empty and patente_inv in st.session_state.df_activas["Patente"].values:
-                    st.warning("⚠️ Esta patente ya registra una operation activa en patio.")
+                    st.warning("⚠️ Esta patente ya registra una operación activa en patio.")
                 else:
                     nuevo_registro = pd.DataFrame([{
                         "Patente": patente_inv, "Empresa": empresa_inv, "Chofer": chofer_inv, "RUT": rut_inv,
@@ -611,4 +611,14 @@ if vista_url == "admin":
                 
         st.markdown("---")
         st.write("### 🔗 Enlaces directos para compartir con el personal:")
-        base_url = "https://control-transporte-patio-cyzw
+        base_url = "https://control-transporte-patio-cyzw3qqhshcvvji8p7fsft.streamlit.app/"
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.info("**🔄 Logística Inversa**")
+            st.code(f"{base_url}?vista=inversa", language="text")
+        with col2:
+            st.success("**📦 Equipo Despacho**")
+            st.code(f"{base_url}?vista=despacho", language="text")
+        with col3:
+            st.warning("**🖥️ Equipo Monitores**")
+            st.code(f"{base_url}?vista=monitoreo", language="text")
