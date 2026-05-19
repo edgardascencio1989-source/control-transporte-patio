@@ -123,7 +123,10 @@ def guardar_datos_cloud(df, pestaña_nombre):
     if sheet:
         try:
             sheet.clear()
-            sheet.update([df.columns.values.tolist()] + df.fillna("").values.tolist())
+            # CORRECCIÓN AQUÍ: Convertimos todo a string estándar de Python para evitar el error int64
+            df_enviar = df.fillna("").astype(str)
+            valores_enviar = [df_enviar.columns.values.tolist()] + df_enviar.values.tolist()
+            sheet.update(valores_enviar)
             return True
         except Exception as e:
             st.error(f"❌ Error crítico de Google Sheets al intentar guardar en '{pestaña_nombre}': {str(e)}")
