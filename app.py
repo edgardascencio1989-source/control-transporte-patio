@@ -448,7 +448,7 @@ if tab5:
                 ingresos_inv.append(h1.strftime('%H:%M:%S') if h1 else "N/A")
                 salidas_inv.append(h2.strftime('%H:%M:%S') if h2 else "N/A")
                 ingresos_desp.append(h3.strftime('%H:%M:%S') if h3 else "N/A")
-                salidas_desp.append(h4.strftime('%H:%M:%S') if h4('N/A'))
+                salidas_desp.append(h4.strftime('%H:%M:%S') if h4 else "N/A")
                 
                 if h1 and h2:
                     t_retorno_min = (h2 - h1).total_seconds() / 60
