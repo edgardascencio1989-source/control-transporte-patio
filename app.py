@@ -25,17 +25,17 @@ def conectar_google_sheets(pestaña_nombre):
         import gspread
         from google.oauth2.service_account import Credentials
         
-        # Ruta del archivo que acabas de renombrar en GitHub
+        # Ruta del archivo renombrado en GitHub
         ruta_json = "key.json"
         
         if not os.path.exists(ruta_json):
-            st.error("❌ ERROR: No se encontró el archivo 'key.json' en el repositorio. Asegúrate de haberlo nombrado correctamente.")
+            st.error("❌ ERROR: No se encontró el archivo 'key.json' en el repositorio. Asegúrate de haberlo guardado correctamente con ese nombre.")
             st.stop()
             return None
             
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         
-        # Conexión limpia y directa leyendo el archivo físico, evitando fallos de formato PEM
+        # Conexión limpia leyendo el archivo físico key.json
         creds = Credentials.from_service_account_file(ruta_json, scopes=scope)
         client = gspread.authorize(creds)
         
@@ -436,7 +436,7 @@ if tab5:
                 h4 = datetime.datetime.fromisoformat(row["H4_Salida_Despacho"]) if pd.notna(row["H4_Salida_Despacho"]) and row["H4_Salida_Despacho"] else None
                 
                 ingresos_inv.append(h1.strftime('%H:%M:%S') if h1 else "N/A")
-                salidas_inv.append(h2.strftime('%H:%M:%S) if h2 else "N/A")
+                salidas_inv.append(h2.strftime('%H:%M:%S') if h2 else "N/A")
                 ingresos_desp.append(h3.strftime('%H:%M:%S') if h3 else "N/A")
                 salidas_desp.append(h4.strftime('%H:%M:%S') if h4 else "N/A")
                 
