@@ -99,9 +99,11 @@ def guardar_datos_cloud(df, pestaña_nombre):
             return True
         except Exception as e:
             st.error(f"❌ Error crítico de Google Sheets al intentar guardar en '{pestaña_nombre}': {str(e)}")
+            st.stop()  # CONGELA LA PANTALLA PARA PODER LEER EL MENSAJE
             return False
     else:
         st.error(f"❌ El bot no pudo abrir la planilla '{pestaña_nombre}'. Revisa si tiene permisos de Editor o si el ID es correcto.")
+        st.stop()  # CONGELA LA PANTALLA PARA PODER LEER EL MENSAJE
     return False
 
 # =====================================================================
