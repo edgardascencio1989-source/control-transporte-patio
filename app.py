@@ -18,31 +18,41 @@ BACKUP_ACTIVAS = "backup_patentes_activas.csv"
 BACKUP_HISTORIAL = "backup_historial_final.csv"
 
 # =====================================================================
-# MOTOR DE CONEXIÓN CON GOOGLE SHEETS (LECTURA DIRECTA DE ARCHIVO)
+# MOTOR DE CONEXIÓN CON GOOGLE SHEETS (LECTURA DESDE STREAMLIT SECRETS)
 # =====================================================================
 def conectar_google_sheets(pestaña_nombre):
     try:
         import gspread
         from google.oauth2.service_account import Credentials
         
-        # Ruta del archivo renombrado en GitHub
-        ruta_json = "key.json"
-        
-        if not os.path.exists(ruta_json):
-            st.error("❌ ERROR: No se encontró el archivo 'key.json' en el repositorio. Asegúrate de haberlo guardado correctamente con ese nombre.")
+        # 1. Verificar si existen los secretos en Streamlit
+        if "json_data" not in st.secrets:
+            st.error("❌ ERROR CRÍTICO: No se encontró la variable 'json_data' en los Secrets de Streamlit. Revisa la pestaña Ajustes de tu App.")
             st.stop()
             return None
             
+        # 2. Intentar decodificar el JSON guardado en Secrets
+        try:
+            creds_dict = json.loads(st.secrets["json_data"])
+        except Exception as json_err:
+            st.error(f"❌ ERROR DE FORMATO JSON: El texto guardado en Secrets no es válido. Asegúrate de que empiece en {{ y termine en }}. Detalles: {str(json_err)}")
+            st.stop()
+            return None
+        
+        # Corrección interna obligatoria para la clave privada
+        if "private_key" in creds_dict:
+            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+            
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         
-        # Conexión limpia leyendo el archivo físico key.json
-        creds = Credentials.from_service_account_file(ruta_json, scopes=scope)
+        # Conexión nativa y segura usando la memoria interna protegida de Streamlit
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
         client = gspread.authorize(creds)
         
         try:
             spreadsheet = client.open_by_key(SPREADSHEET_ID)
         except Exception as spread_err:
-            st.error(f"❌ ERROR DE ACCESO: El bot no pudo entrar a la planilla. Verifica que el correo del bot esté como 'Editor' en tu Sheets. Detalles: {str(spread_err)}")
+            st.error(f"❌ ERROR DE ACCESO: El bot ({creds_dict.get('client_email')}) no pudo entrar a la planilla. Verifica que esté como 'Editor' en tu Sheets. Detalles: {str(spread_err)}")
             st.stop()
             return None
             
@@ -55,7 +65,7 @@ def conectar_google_sheets(pestaña_nombre):
             return None
             
     except Exception as e:
-        st.error(f"❌ ERROR GENERAL DE CONEXIÓN: {str(e)}")
+        st.error(f"❌ ERROR GENERAL DE CONEXIÓN SEGURA: {str(e)}")
         st.stop()
         return None
 
@@ -438,7 +448,7 @@ if tab5:
                 ingresos_inv.append(h1.strftime('%H:%M:%S') if h1 else "N/A")
                 salidas_inv.append(h2.strftime('%H:%M:%S') if h2 else "N/A")
                 ingresos_desp.append(h3.strftime('%H:%M:%S') if h3 else "N/A")
-                salidas_desp.append(h4.strftime('%H:%M:%S') if h4 else "N/A")
+                salidas_desp.append(h4.strftime('%H:%M:%S') if h4('N/A'))
                 
                 if h1 and h2:
                     t_retorno_min = (h2 - h1).total_seconds() / 60
