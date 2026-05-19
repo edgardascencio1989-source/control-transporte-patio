@@ -18,7 +18,7 @@ BACKUP_ACTIVAS = "backup_patentes_activas.csv"
 BACKUP_HISTORIAL = "backup_historial_final.csv"
 
 # =====================================================================
-# MOTOR DE CONEXIÓN CON GOOGLE SHEETS (REFORZADO PARA DIAGNÓSTICO)
+# MOTOR DE CONEXIÓN CON GOOGLE SHEETS (CORREGIDO PARA EVITAR ERROR PEM)
 # =====================================================================
 def conectar_google_sheets(pestaña_nombre):
     try:
@@ -27,7 +27,7 @@ def conectar_google_sheets(pestaña_nombre):
         
         # 1. Verificar si existen los secretos
         if "json_data" not in st.secrets:
-            st.error("❌ ERROR: No se encontró la variable 'json_data' en los Secrets de Streamlit. Revisa la configuración de tu App.")
+            st.error("❌ ERROR: No se encontró la variable 'json_data' en los Secrets de Streamlit.")
             st.stop()
             return None
             
@@ -35,12 +35,22 @@ def conectar_google_sheets(pestaña_nombre):
         try:
             creds_dict = json.loads(st.secrets["json_data"])
         except Exception as json_err:
-            st.error(f"❌ ERROR DE FORMATO: El texto pegado en Streamlit Secrets no es un JSON válido. Asegúrate de haber copiado desde la primera llave {{ hasta la última llave }} en VS Code. Detalles: {str(json_err)}")
+            st.error(f"❌ ERROR DE FORMATO: El texto pegado en Streamlit Secrets no es un JSON válido. Detalles: {str(json_err)}")
             st.stop()
             return None
         
+        # 🛠️ CORRECCIÓN CRÍTICA DE LA PRIVATE KEY (Evita el error 'Unable to load PEM file')
         if "private_key" in creds_dict:
-            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+            pk = creds_dict["private_key"]
+            # Limpiar barras duplicadas o mal formateadas
+            pk = pk.replace("\\\\n", "\n").replace("\\n", "\n")
+            
+            # Si por alguna razón quedó todo pegado en una sola línea sin saltos correctos, los reconstruimos
+            if "-----BEGIN PRIVATE KEY-----" in pk and "\n" not in pk.replace("-----BEGIN PRIVATE KEY-----", ""):
+                pk = pk.replace("-----BEGIN PRIVATE KEY-----", "-----BEGIN PRIVATE KEY-----\n")
+                pk = pk.replace("-----END PRIVATE KEY-----", "\n-----END PRIVATE KEY-----")
+                
+            creds_dict["private_key"] = pk
             
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
@@ -59,7 +69,7 @@ def conectar_google_sheets(pestaña_nombre):
             sheet = spreadsheet.worksheet(pestaña_nombre)
             return sheet
         except Exception as work_err:
-            st.error(f"❌ ERROR DE PESTAÑA: Se abrió el archivo, pero no existe la pestaña llamada '{pestaña_nombre}'. Revisa espacios o acentos. Detalles: {str(work_err)}")
+            st.error(f"❌ ERROR DE PESTAÑA: Se abrió el archivo, pero no existe la pestaña llamada '{pestaña_nombre}'. Detalles: {str(work_err)}")
             st.stop()
             return None
             
@@ -291,7 +301,7 @@ if tab3:
                         
                         if st.form_submit_button("📥 Registrar Entrada a Carga"):
                             if len(rut_f) < 9 or len(rut_f) > 10:
-                                st.error("❌ El RUT debe tener entre 9 y 10 caracteres.")
+                               _f = st.error("❌ El RUT debe tener entre 9 y 10 caracteres.")
                             else:
                                 idx = st.session_state.df_activas[st.session_state.df_activas["Patente"] == patente_desp].index[0]
                                 st.session_state.df_activas.at[idx, "Empresa"] = empresa_f
