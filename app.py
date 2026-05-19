@@ -98,7 +98,10 @@ def guardar_datos_cloud(df, pestaña_nombre):
             sheet.update([df.columns.values.tolist()] + df.fillna("").values.tolist())
             return True
         except Exception as e:
-            pass
+            st.error(f"❌ Error crítico de Google Sheets al intentar guardar en '{pestaña_nombre}': {str(e)}")
+            return False
+    else:
+        st.error(f"❌ El bot no pudo abrir la planilla '{pestaña_nombre}'. Revisa si tiene permisos de Editor o si el ID es correcto.")
     return False
 
 # =====================================================================
