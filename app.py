@@ -18,17 +18,26 @@ BACKUP_ACTIVAS = "backup_patentes_activas.csv"
 BACKUP_HISTORIAL = "backup_historial_final.csv"
 
 # =====================================================================
-# MOTOR DE CONEXIÓN CON GOOGLE SHEETS
+# MOTOR DE CONEXIÓN CON GOOGLE SHEETS (REFORZADO PARA DIAGNÓSTICO)
 # =====================================================================
 def conectar_google_sheets(pestaña_nombre):
     try:
         import gspread
         from google.oauth2.service_account import Credentials
         
+        # 1. Verificar si existen los secretos
         if "json_data" not in st.secrets:
+            st.error("❌ ERROR: No se encontró la variable 'json_data' en los Secrets de Streamlit. Revisa la configuración de tu App.")
+            st.stop()
             return None
             
-        creds_dict = json.loads(st.secrets["json_data"])
+        # 2. Intentar decodificar el JSON
+        try:
+            creds_dict = json.loads(st.secrets["json_data"])
+        except Exception as json_err:
+            st.error(f"❌ ERROR DE FORMATO: El texto pegado en Streamlit Secrets no es un JSON válido. Asegúrate de haber copiado desde la primera llave {{ hasta la última llave }} en VS Code. Detalles: {str(json_err)}")
+            st.stop()
+            return None
         
         if "private_key" in creds_dict:
             creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
@@ -36,9 +45,27 @@ def conectar_google_sheets(pestaña_nombre):
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
         client = gspread.authorize(creds)
-        sheet = client.open_by_key(SPREADSHEET_ID).worksheet(pestaña_nombre)
-        return sheet
+        
+        # 3. Intentar abrir la planilla por ID
+        try:
+            spreadsheet = client.open_by_key(SPREADSHEET_ID)
+        except Exception as spread_err:
+            st.error(f"❌ ERROR DE ACCESO: El bot ({creds_dict.get('client_email')}) no pudo entrar a la planilla. Verifica que este correo exacto esté como 'Editor' en el botón Compartir de tu Sheets. Detalles: {str(spread_err)}")
+            st.stop()
+            return None
+            
+        # 4. Intentar abrir la pestaña específica
+        try:
+            sheet = spreadsheet.worksheet(pestaña_nombre)
+            return sheet
+        except Exception as work_err:
+            st.error(f"❌ ERROR DE PESTAÑA: Se abrió el archivo, pero no existe la pestaña llamada '{pestaña_nombre}'. Revisa espacios o acentos. Detalles: {str(work_err)}")
+            st.stop()
+            return None
+            
     except Exception as e:
+        st.error(f"❌ ERROR GENERAL DE CONEXIÓN: {str(e)}")
+        st.stop()
         return None
 
 def cargar_datos_cloud(pestaña_nombre):
@@ -99,11 +126,8 @@ def guardar_datos_cloud(df, pestaña_nombre):
             return True
         except Exception as e:
             st.error(f"❌ Error crítico de Google Sheets al intentar guardar en '{pestaña_nombre}': {str(e)}")
-            st.stop()  # CONGELA LA PANTALLA PARA PODER LEER EL MENSAJE
+            st.stop()
             return False
-    else:
-        st.error(f"❌ El bot no pudo abrir la planilla '{pestaña_nombre}'. Revisa si tiene permisos de Editor o si el ID es correcto.")
-        st.stop()  # CONGELA LA PANTALLA PARA PODER LEER EL MENSAJE
     return False
 
 # =====================================================================
@@ -202,7 +226,7 @@ if tab1:
                 elif len(rut_inv) < 9 or len(rut_inv) > 10:
                     st.error(f"❌ El RUT ingresado tiene {len(rut_inv)} caracteres. Debe tener un mínimo de 9 y un máximo de 10 caracteres.")
                 elif not st.session_state.df_activas.empty and patente_inv in st.session_state.df_activas["Patente"].values:
-                    st.warning("⚠️ Esta patente ya registra una operación activa en patio.")
+                    st.warning("⚠️ Esta patente ya registra una operation activa en patio.")
                 else:
                     nuevo_registro = pd.DataFrame([{
                         "Patente": patente_inv, "Empresa": empresa_inv, "Chofer": chofer_inv, "RUT": rut_inv,
@@ -246,7 +270,6 @@ if tab3:
         patente_desp = st.text_input("🚚 Digite Patente para Despacho:", max_chars=6, key=f"txt_desp_{st.session_state.limpiar_despacho}").upper().strip()
         
         if len(patente_desp) == 6:
-            # CASO 1: LA PATENTE SÍ VIENE DE INVERSA
             if not st.session_state.df_activas.empty and patente_desp in st.session_state.df_activas["Patente"].values:
                 fila = st.session_state.df_activas[st.session_state.df_activas["Patente"] == patente_desp].iloc[0]
                 
@@ -273,9 +296,6 @@ if tab3:
                                 idx = st.session_state.df_activas[st.session_state.df_activas["Patente"] == patente_desp].index[0]
                                 st.session_state.df_activas.at[idx, "Empresa"] = empresa_f
                                 
-                                # ==========================================
-                                # LÓGICA DE PARTICIÓN DE HISTORIAL (CHOFER 2)
-                                # ==========================================
                                 if chofer_f != fila["Chofer"] or rut_f != fila["RUT"]:
                                     h1_str = fila["H1_Llegada_Inversa"]
                                     h2_str = fila["H2_Salida_Inversa"]
@@ -283,7 +303,6 @@ if tab3:
                                     h2 = datetime.datetime.fromisoformat(h2_str) if pd.notna(h2_str) and h2_str else None
                                     t_retorno = (h2 - h1).total_seconds() / 60 if h1 and h2 else 0.0
 
-                                    # 1. Archivar el tramo completado del Chofer 1 en el Historial
                                     nuevo_hist_c1 = pd.DataFrame([{
                                         "Fecha": ahora_actual.strftime('%d-%m-%Y'),
                                         "Semana": f"Semana {ahora_actual.isocalendar()[1]}",
@@ -302,7 +321,6 @@ if tab3:
                                     st.session_state.df_historial = pd.concat([st.session_state.df_historial, nuevo_hist_c1], ignore_index=True)
                                     guardar_datos_cloud(st.session_state.df_historial, "historial_final")
 
-                                    # 2. Actualizar el vehículo activo con el Chofer 2 (para que herede H1 y H2)
                                     st.session_state.df_activas.at[idx, "Chofer_2"] = fila["Chofer"]
                                     st.session_state.df_activas.at[idx, "RUT_2"] = fila["RUT"]
                                     st.session_state.df_activas.at[idx, "Chofer"] = chofer_f
@@ -318,8 +336,6 @@ if tab3:
                                 st.session_state.limpiar_despacho += 1
                                 time.sleep(1)
                                 st.rerun()
-            
-            # CASO 2: FORMULARIO DE CONTINGENCIA (Patente NO registrada en Inversa)
             else:
                 st.warning("⚠️ Esta patente no registra ingreso previo en Logística Inversa. Se abrirá el formulario de registro obligatorio.")
                 with st.form("form_ingreso_directo_contingencia"):
@@ -503,7 +519,6 @@ if tab5:
                     df_stats['Min_Desp'] = df_stats['T. Despacho (Carga)'].apply(cronometro_a_minutos)
                     df_stats['Min_Total'] = df_stats['Min_Inv'] + df_stats['Min_Desp']
                     
-                    # PROTECCIÓN DE CÁLCULO: Excluir los cierres parciales por Cambio de Conductor para los promedios globales de empresa y patente
                     df_vehiculos = df_stats[df_stats["Tipo de Cierre"] != "Cambio Conductor"]
                     
                     st.markdown("#### 🏢 Promedio Por Empresa")
@@ -516,7 +531,6 @@ if tab5:
                     st.markdown("<br>", unsafe_allow_html=True)
                     
                     st.markdown("#### 👨‍✈️ Promedio Por Chofer")
-                    # El chofer SÍ incluye todos los registros para promediar correctamente sus tiempos parciales
                     df_chof = df_stats.groupby("Chofer")[["Min_Inv", "Min_Desp", "Min_Total"]].mean().reset_index()
                     df_chof["Promedio Inversa"] = df_chof["Min_Inv"].apply(formatear_a_cronometro)
                     df_chof["Promedio Despacho"] = df_chof["Min_Desp"].apply(formatear_a_cronometro)
@@ -597,14 +611,4 @@ if vista_url == "admin":
                 
         st.markdown("---")
         st.write("### 🔗 Enlaces directos para compartir con el personal:")
-        base_url = "https://control-transporte-patio-cyzw3qqhshcvvji8p7fsft.streamlit.app/"
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.info("**🔄 Logística Inversa**")
-            st.code(f"{base_url}?vista=inversa", language="text")
-        with col2:
-            st.success("**📦 Equipo Despacho**")
-            st.code(f"{base_url}?vista=despacho", language="text")
-        with col3:
-            st.warning("**🖥️ Equipo Monitores**")
-            st.code(f"{base_url}?vista=monitoreo", language="text")
+        base_url = "https://control-transporte-patio-cyzw
