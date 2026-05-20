@@ -21,7 +21,6 @@ BACKUP_HISTORIAL = "backup_historial_final.csv"
 # =====================================================================
 @st.cache_resource(show_spinner=False)
 def obtener_cliente_gspread():
-    """Mantiene la conexión abierta en memoria para evitar re-autenticarse (Ultra rápido)"""
     try:
         import gspread
         from google.oauth2.service_account import Credentials
@@ -39,7 +38,7 @@ def obtener_cliente_gspread():
 def conectar_google_sheets(pestaña_nombre):
     client = obtener_cliente_gspread()
     if not client:
-        st.error("❌ ERROR CRÍTICO: Problemas con las credenciales Secrets.")
+        st.error("❌ ERROR: Problemas con las credenciales Secrets.")
         st.stop()
         return None
     try:
@@ -51,17 +50,15 @@ def conectar_google_sheets(pestaña_nombre):
         return None
 
 # =====================================================================
-# 🪪 OPTIMIZACIÓN 2: LIMPIEZA TOTAL DE RUT Y HORAS
+# 🪪 OPTIMIZACIÓN 2: LIMPIEZA DE RUT Y HORAS
 # =====================================================================
 def formatear_rut(rut_input):
-    """Limpia cualquier texto y lo devuelve en formato XXXXXXXX-X perfecto"""
     r = str(rut_input).upper().replace(".", "").replace("-", "").replace(" ", "").strip()
     if len(r) > 1:
         return r[:-1] + "-" + r[-1]
     return r
 
 def parse_fecha(fecha_str):
-    """Entiende formato ISO y formato de fecha normal"""
     if pd.isna(fecha_str) or not fecha_str: 
         return None
     try:
@@ -183,21 +180,24 @@ def agregar_fila_historial_rapido(nueva_fila_dict):
     return False
 
 # =====================================================================
-# 🚀 OPTIMIZACIÓN 3: CARGA INTELIGENTE
+# INICIO DE DATOS EN MEMORIA
 # =====================================================================
 if "datos_iniciados" not in st.session_state:
     st.session_state.df_activas = cargar_datos_cloud("patentes_activas")
     st.session_state.df_historial = cargar_datos_cloud("historial_final")
     st.session_state.datos_iniciados = True
 
-if "limpiar_inversa" not in st.session_state: st.session_state.limpiar_inversa = 0
-if "limpiar_despacho" not in st.session_state: st.session_state.limpiar_despacho = 0
-if "limpiar_salida" not in st.session_state: st.session_state.limpiar_salida = 0
+if "limpiar_inversa" not in st.session_state: 
+    st.session_state.limpiar_inversa = 0
+if "limpiar_despacho" not in st.session_state: 
+    st.session_state.limpiar_despacho = 0
+if "limpiar_salida" not in st.session_state: 
+    st.session_state.limpiar_salida = 0
 
 ahora_actual = datetime.datetime.now(zona_local)
 
 # =====================================================================
-# DETECCIÓN DE ROL POR LINK
+# ENRUTAMIENTO DE PESTAÑAS (URL)
 # =====================================================================
 parametros_url = st.query_params
 vista_url = parametros_url.get("vista", "admin").lower()
@@ -208,30 +208,24 @@ mostrar_tab3 = False
 mostrar_tab4 = False
 mostrar_tab5 = False
 titulos_pestañas = []
-subtitulo_pantalla = ""
 
 if vista_url == "inversa":
     mostrar_tab1, mostrar_tab2, mostrar_tab5 = True, True, True
-    titulos_pestañas = ["📥 1. Ingreso Logística Inversa", "📤 2. Salida de Inversa", "📊 5. Monitoreo y KPIS"]
-    subtitulo_pantalla = "🔄 Módulo Operativo: EQUIPO LOGÍSTICA INVERSA"
+    titulos_pestañas = ["📥 1. Ingreso Inversa", "📤 2. Salida Inversa", "📊 5. Monitoreo"]
 elif vista_url == "despacho":
     mostrar_tab3, mostrar_tab4, mostrar_tab5 = True, True, True
-    titulos_pestañas = ["📦 3. Ingreso a despacho", "🚪 4. Salida Despacho", "📊 5. Monitoreo y KPIS"]
-    subtitulo_pantalla = "📦 Módulo Operativo: EQUIPO DESPACHO"
+    titulos_pestañas = ["📦 3. Ingreso Despacho", "🚪 4. Salida Despacho", "📊 5. Monitoreo"]
 elif vista_url == "monitoreo":
     mostrar_tab5 = True
-    titulos_pestañas = ["📊 5. Monitoreo y KPIS"]
-    subtitulo_pantalla = "🖥️ Módulo de Visualización: EQUIPO MONITORES"
+    titulos_pestañas = ["📊 5. Monitoreo"]
 else:
     mostrar_tab1, mostrar_tab2, mostrar_tab3, mostrar_tab4, mostrar_tab5 = True, True, True, True, True
     titulos_pestañas = [
-        "📥 1. Ingreso Logística Inversa", "📤 2. Salida de Inversa", 
-        "📦 3. Ingreso a despacho", "🚪 4. Salida Despacho", "📊 5. Monitoreo y KPIS"
+        "📥 1. Ingreso Inversa", "📤 2. Salida Inversa", 
+        "📦 3. Ingreso Despacho", "🚪 4. Salida Despacho", "📊 5. Monitoreo"
     ]
-    subtitulo_pantalla = "👑 Módulo Global: ADMINISTRACIÓN"
 
 pestañas_creadas = st.tabs(titulos_pestañas)
-
 idx = 0
 tab1 = pestañas_creadas[idx] if mostrar_tab1 else None
 if mostrar_tab1: idx += 1
@@ -252,14 +246,49 @@ if tab1:
         with st.form(f"form_ingreso_inversa_{st.session_state.limpiar_inversa}"):
             patente_inv = st.text_input("🚚 Patente del Camión", max_chars=6).upper().strip()
             empresa_inv = st.text_input("🏢 Empresa de Transporte").upper().strip()
-            chofer_inv = st.text_input("👤 Nombre y apellido del Chofer").upper().strip()
-            rut_inv = st.text_input("🆔 RUT del Chofer", max_chars=12, help="Se formateará automáticamente").strip()
+            chofer_inv = st.text_input("👤 Nombre del Chofer").upper().strip()
+            rut_inv = st.text_input("🆔 RUT del Chofer").strip()
             
-            if st.form_submit_button("💾 Registrar Llegada a Inversa"):
+            if st.form_submit_button("💾 Registrar Llegada"):
                 rut_limpio = formatear_rut(rut_inv)
+                
+                df_act = st.session_state.df_activas
+                patente_existe = not df_act.empty and (patente_inv in df_act["Patente"].values)
+                
                 if not patente_inv or not empresa_inv or not chofer_inv or not rut_limpio:
                     st.error("❌ Todos los campos son obligatorios.")
                 elif len(patente_inv) != 6:
                     st.error("❌ La patente debe tener exactamente 6 caracteres.")
-                elif not st.session_state.df_activas.empty and patente_inv in st.session_state.df_activas["Patente"].values:
-                    st.warning("⚠️ Esta patente ya registra una operación activa en
+                elif patente_existe:
+                    # Texto cortado de forma segura en Python
+                    st.warning("⚠️ Esta patente ya registra una operación activa en patio.")
+                else:
+                    nuevo_registro = pd.DataFrame([{
+                        "Patente": patente_inv, 
+                        "Empresa": empresa_inv, 
+                        "Chofer": chofer_inv, 
+                        "RUT": rut_limpio,
+                        "H1_Llegada_Inversa": ahora_actual.strftime('%Y-%m-%d %H:%M:%S'), 
+                        "H2_Salida_Inversa": "",
+                        "H3_Llegada_Despacho": "", 
+                        "H4_Salida_Despacho": "",
+                        "Ruta_Auditada": "", 
+                        "Estado": "En Logística Inversa", 
+                        "Chofer_2": "", 
+                        "RUT_2": ""
+                    }])
+                    st.session_state.df_activas = pd.concat([df_act, nuevo_registro], ignore_index=True)
+                    guardar_datos_cloud(st.session_state.df_activas, "patentes_activas")
+                    st.success("✅ Registrado con éxito.")
+                    st.session_state.limpiar_inversa += 1
+                    time.sleep(1)
+                    st.rerun()
+
+# =====================================================================
+# PESTAÑA 2: SALIDA INVERSA
+# =====================================================================
+if tab2:
+    with tab2:
+        st.header("📤 Registro de Salida de Logística Inversa")
+        df_act = st.session_state.df_activas
+        if
