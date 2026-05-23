@@ -607,15 +607,26 @@ if vista_url == "admin":
                 ahora_forzado = datetime.datetime.now(zona_local)
                 
                 for _, fila_viaje in st.session_state.df_activas.iterrows():
-                    h1 = datetime.datetime.fromisoformat(fila_viaje["H1_Llegada_Inversa"]) if pd.notna(fila_viaje["H1_Llegada_Inversa"]) and fila_viaje["H1_Llegada_Inversa"] else None
-                    h2 = datetime.datetime.fromisoformat(fila_viaje["H2_Salida_Inversa"]) if pd.notna(fila_viaje["H2_Salida_Inversa"]) and fila_viaje["H2_Salida_Inversa"] else None
-                    h3 = datetime.datetime.fromisoformat(fila_viaje["H3_Llegada_Despacho"]) if pd.notna(fila_viaje["H3_Llegada_Despacho"]) and fila_viaje["H3_Llegada_Despacho"] else None
-                    h4 = ahora_forzado
-                    
-                    t_retorno = (h2 - h1).total_seconds() / 60 if h1 and h2 else 0.0
-                    t_carga = (h4 - h3).total_seconds() / 60 if h3 else 0.0
-                    
-                    base_date = h3 if h3 else (h1 if h1 else ahora_forzado)
+                   h1 = parse_fecha(fila_viaje["H1_Llegada_Inversa"])
+        h2 = parse_fecha(fila_viaje["H2_Salida_Inversa"])
+        h3 = parse_fecha(fila_viaje["H3_Llegada_Despacho"])
+        
+        ahora_forzado_sin_tz = ahora_actual.replace(tzinfo=None)
+        h4 = ahora_forzado_sin_tz
+        
+        if h1 and h2:
+            t_retorno = (h2 - h1).total_seconds() / 60
+        elif h1:
+            t_retorno = (ahora_forzado_sin_tz - h1).total_seconds() / 60
+        else:
+            t_retorno = 0.0
+            
+        if h3:
+            t_carga = (h4 - h3).total_seconds() / 60
+        else:
+            t_carga = 0.0
+            
+        base_date = h3 if h3 else (h1 if h1 else ahora_forzado_sin_tz)
                     
                     dict_forzado = {
                         "Fecha": base_date.strftime('%d-%m-%Y'),
