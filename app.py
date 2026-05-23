@@ -270,8 +270,8 @@ if tab1:
                     st.error("❌ Todos los campos son obligatorios.")
                 elif len(patente_inv) != 6:
                     st.error(f"❌ La patente ingresada tiene {len(patente_inv)} caracteres. Debe tener exactamente 6 caracteres.")
-                elif len(rut_inv) < 9 or len(rut_inv) > 10:
-                    st.error(f"❌ El RUT ingresado tiene {len(rut_inv)} caracteres. Debe tener un mínimo de 9 y un máximo de 10 caracteres.")
+                elif len(rut_inv) < 8 or len(rut_inv) > 10:
+                    st.error(f"❌ El RUT ingresado tiene {len(rut_inv)} caracteres. Debe tener un mínimo de 8 y un máximo de 10 caracteres.")
                 elif not st.session_state.df_activas.empty and patente_inv in st.session_state.df_activas["Patente"].values:
                     st.warning("⚠️ Esta patente ya registra una operación activa en patio.")
                 else:
@@ -338,8 +338,8 @@ if tab3:
                         rut_f = st.text_input("🆔 RUT del Conductor en Despacho:", value=fila["RUT"], max_chars=10).upper().strip()
                         
                         if st.form_submit_button("📥 Registrar Entrada a Carga"):
-                            if len(rut_f) < 9 or len(rut_f) > 10:
-                               st.error("❌ El RUT debe tener entre 9 y 10 caracteres.")
+                            if len(rut_f) < 8 or len(rut_f) > 10:
+                               st.error("❌ El RUT debe tener entre 8 y 10 caracteres.")
                             else:
                                 idx = st.session_state.df_activas[st.session_state.df_activas["Patente"] == patente_desp].index[0]
                                 st.session_state.df_activas.at[idx, "Empresa"] = empresa_f
@@ -398,7 +398,7 @@ if tab3:
                     if st.form_submit_button("💾 Registrar Ingreso Completo Directo"):
                         if not empresa_directa or not chofer_directo or not rut_directo:
                             st.error("❌ Todos los campos son obligatorios.")
-                        elif len(rut_directo) < 9 or len(rut_directo) > 10:
+                        elif len(rut_directo) < 8 or len(rut_directo) > 10:
                             st.error("❌ El RUT debe tener entre 9 y 10 caracteres.")
                         else:
                             nuevo_registro = pd.DataFrame([{
