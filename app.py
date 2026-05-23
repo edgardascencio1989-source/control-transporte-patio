@@ -602,32 +602,32 @@ if vista_url == "admin":
         st.write("### 🚨 Panel de Limpieza de Fin de Jornada")
         st.write("Si quedan vehículos abiertos en el patio al terminar el turno, presiona este botón para cerrarlos en masa y limpiar el monitor para el día siguiente:")
         
-        if st.button("⚠️ Forzar Cierre y Archivar Procesos Inconclusos", type="primary"):
-            if not st.session_state.df_activas.empty:
+       if not st.session_state.df_activas.empty:
                 ahora_forzado = datetime.datetime.now(zona_local)
                 
                 for _, fila_viaje in st.session_state.df_activas.iterrows():
-                   h1 = parse_fecha(fila_viaje["H1_Llegada_Inversa"])
-        h2 = parse_fecha(fila_viaje["H2_Salida_Inversa"])
-        h3 = parse_fecha(fila_viaje["H3_Llegada_Despacho"])
-        
-        ahora_forzado_sin_tz = ahora_actual.replace(tzinfo=None)
-        h4 = ahora_forzado_sin_tz
-        
-        if h1 and h2:
-            t_retorno = (h2 - h1).total_seconds() / 60
-        elif h1:
-            t_retorno = (ahora_forzado_sin_tz - h1).total_seconds() / 60
-        else:
-            t_retorno = 0.0
-            
-        if h3:
-            t_carga = (h4 - h3).total_seconds() / 60
-        else:
-            t_carga = 0.0
-            
-        base_date = h3 if h3 else (h1 if h1 else ahora_forzado_sin_tz)
+                    h1 = parse_fecha(fila_viaje["H1_Llegada_Inversa"])
+                    h2 = parse_fecha(fila_viaje["H2_Salida_Inversa"])
+                    h3 = parse_fecha(fila_viaje["H3_Llegada_Despacho"])
                     
+                    ahora_forzado_sin_tz = ahora_actual.replace(tzinfo=None)
+                    h4 = ahora_forzado_sin_tz
+                    
+                    if h1 and h2:
+                        t_retorno = (h2 - h1).total_seconds() / 60
+                    elif h1:
+                        t_retorno = (ahora_forzado_sin_tz - h1).total_seconds() / 60
+                    else:
+                        t_retorno = 0.0
+                        
+                    if h3:
+                        t_carga = (h4 - h3).total_seconds() / 60
+                    else:
+                        t_carga = 0.0
+          
+                    base_date = h3 if h3 else (h1 if h1 else ahora_forzado_sin_tz)
+                    
+                    dict_forzado = {
                     dict_forzado = {
                         "Fecha": base_date.strftime('%d-%m-%Y'),
                         "Semana": f"Semana {base_date.isocalendar()[1]}",
