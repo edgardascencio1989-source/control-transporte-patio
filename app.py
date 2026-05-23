@@ -483,13 +483,11 @@ if tab5:
                 
         if not st.session_state.df_activas.empty:
             df_en_patio = st.session_state.df_activas.copy()
-            ahora_actual_calc = datetime.datetime.now(zona_local)
             
             ingresos_inv, salidas_inv, ingresos_desp, salidas_desp = [], [], [], []
             t_retornos, t_cargas = [], []
             
-           for _, row in df_en_patio.iterrows():
-                # Leemos las fechas de forma segura y les removemos la zona horaria de inmediato
+            for _, row in df_en_patio.iterrows():
                 h1 = parse_fecha(row["H1_Llegada_Inversa"])
                 h2 = parse_fecha(row["H2_Salida_Inversa"])
                 h3 = parse_fecha(row["H3_Llegada_Despacho"])
