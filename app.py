@@ -177,6 +177,19 @@ if "limpiar_despacho" not in st.session_state:
 if "limpiar_salida" not in st.session_state:
     st.session_state.limpiar_salida = 0
 
+def parse_fecha(fecha_str):
+    if pd.isna(fecha_str) or not fecha_str: return None
+    try: return datetime.datetime.strptime(str(fecha_str), '%Y-%m-%d %H:%M:%S')
+    except:
+        try: return datetime.datetime.fromisoformat(str(fecha_str))
+        except: return None
+
+def formatear_rut(rut_input):
+    r = str(rut_input).upper().replace(".", "").replace("-", "").replace(" ", "").strip()
+    if len(r) > 1:
+        return r[:-1] + "-" + r[-1]
+    return r
+
 def formatear_a_cronometro(minutos_decimales):
     if pd.isna(minutos_decimales) or minutos_decimales < 0:
         return "00:00:00"
