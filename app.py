@@ -488,22 +488,26 @@ if tab5:
             ingresos_inv, salidas_inv, ingresos_desp, salidas_desp = [], [], [], []
             t_retornos, t_cargas = [], []
             
-            for _, row in df_en_patio.iterrows():
-                h1 = datetime.datetime.fromisoformat(row["H1_Llegada_Inversa"]) if pd.notna(row["H1_Llegada_Inversa"]) and row["H1_Llegada_Inversa"] else None
-                h2 = datetime.datetime.fromisoformat(row["H2_Salida_Inversa"]) if pd.notna(row["H2_Salida_Inversa"]) and row["H2_Salida_Inversa"] else None
-                h3 = datetime.datetime.fromisoformat(row["H3_Llegada_Despacho"]) if pd.notna(row["H3_Llegada_Despacho"]) and row["H3_Llegada_Despacho"] else None
-                h4 = datetime.datetime.fromisoformat(row["H4_Salida_Despacho"]) if pd.notna(row["H4_Salida_Despacho"]) and row["H4_Salida_Despacho"] else None
+           for _, row in df_en_patio.iterrows():
+                # Leemos las fechas de forma segura y les removemos la zona horaria de inmediato
+                h1 = parse_fecha(row["H1_Llegada_Inversa"])
+                h2 = parse_fecha(row["H2_Salida_Inversa"])
+                h3 = parse_fecha(row["H3_Llegada_Despacho"])
+                h4 = parse_fecha(row["H4_Salida_Despacho"])
                 
-                # SOLUCIÓN SINTAXIS: Formato correcto del condicional en Python
+                if h1: h1 = h1.replace(tzinfo=None)
+                if h2: h2 = h2.replace(tzinfo=None)
+                if h3: h3 = h3.replace(tzinfo=None)
+                if h4: h4 = h4.replace(tzinfo=None)
+                
                 ingresos_inv.append(h1.strftime('%H:%M:%S') if h1 else "N/A")
                 salidas_inv.append(h2.strftime('%H:%M:%S') if h2 else "N/A")
                 ingresos_desp.append(h3.strftime('%H:%M:%S') if h3 else "N/A")
                 salidas_desp.append(h4.strftime('%H:%M:%S') if h4 else "N/A")
                 
-           # 1. Creamos una versión de la hora actual SIN zona horaria para poder restar de forma segura
                 ahora_sin_tz = ahora_actual.replace(tzinfo=None)
 
-                # 2. Cálculo seguro de T. Retorno
+                # Cálculo de T. Retorno
                 if h1 and h2:
                     t_ret = (h2 - h1).total_seconds() / 60
                 elif h1:
@@ -512,7 +516,7 @@ if tab5:
                     t_ret = None
                 t_retornos.append(formatear_a_cronometro(t_ret) if t_ret is not None else "N/A")
                 
-                # 3. Cálculo seguro de T. Carga
+                # Cálculo de T. Carga
                 if h3 and h4:
                     t_carg = (h4 - h3).total_seconds() / 60
                 elif h3:
