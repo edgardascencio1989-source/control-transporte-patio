@@ -487,21 +487,24 @@ if tab5:
                 ingresos_desp.append(h3.strftime('%H:%M:%S') if h3 else "N/A")
                 salidas_desp.append(h4.strftime('%H:%M:%S') if h4 else "N/A")
                 
+            # Cálculo seguro de tiempos
+                # T. Retorno
                 if h1 and h2:
-                    t_retorno_min = (h2 - h1).total_seconds() / 60
-                elif h1 and not h2:
-                    t_retorno_min = (ahora_actual_calc - h1).total_seconds() / 60
+                    t_ret = (h2 - h1).total_seconds() / 60
+                elif h1:
+                    t_ret = (ahora_actual - h1).total_seconds() / 60
                 else:
-                    t_retorno_min = None
-                t_retornos.append(formatear_a_cronometro(t_retorno_min) if t_retorno_min is not None else "N/A")
+                    t_ret = None
+                t_retornos.append(formatear_a_cronometro(t_ret) if t_ret is not None else "N/A")
                 
+                # T. Carga
                 if h3 and h4:
-                    t_carga_min = (h4 - h3).total_seconds() / 60
-                elif h3 and not h4:
-                    t_carga_min = (ahora_actual_calc - h3).total_seconds() / 60
+                    t_carg = (h4 - h3).total_seconds() / 60
+                elif h3:
+                    t_carg = (ahora_actual - h3).total_seconds() / 60
                 else:
-                    t_carga_min = None
-                t_cargas.append(formatear_a_cronometro(t_carga_min) if t_carga_min is not None else "N/A")
+                    t_carg = None
+                t_cargas.append(formatear_a_cronometro(t_carg) if t_carg is not None else "N/A")
             
             df_en_patio["Ingreso Inversa"] = ingresos_inv
             df_en_patio["Salida Inversa"] = salidas_inv
