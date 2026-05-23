@@ -313,7 +313,6 @@ if tab3:
         patente_desp = st.text_input("🚚 Digite Patente para Despacho:", max_chars=6, key=f"txt_desp_{st.session_state.limpiar_despacho}").upper().strip()
         
         if len(patente_desp) == 6:
-            # SOLUCIÓN DE SINTAXIS: Operador 'and' en lugar de '&&'
             if not st.session_state.df_activas.empty and patente_desp in st.session_state.df_activas["Patente"].values:
                 fila = st.session_state.df_activas[st.session_state.df_activas["Patente"] == patente_desp].iloc[0]
                 
@@ -340,7 +339,6 @@ if tab3:
                                 idx = st.session_state.df_activas[st.session_state.df_activas["Patente"] == patente_desp].index[0]
                                 st.session_state.df_activas.at[idx, "Empresa"] = empresa_f
                                 
-                                # SOLUCIÓN DUPLICADOS: Limpieza estricta antes de comparar
                                 c_original = str(fila["Chofer"]).upper().strip()
                                 r_original = str(fila["RUT"]).upper().strip()
                                 c_nuevo = chofer_f.upper().strip()
@@ -349,8 +347,8 @@ if tab3:
                                 if c_nuevo != c_original or r_nuevo != r_original:
                                     h1_str = fila["H1_Llegada_Inversa"]
                                     h2_str = fila["H2_Salida_Inversa"]
-                                    h1 = datetime.datetime.fromisoformat(h1_str) if pd.notna(h1_str) and h1_str else None
-                                    h2 = datetime.datetime.fromisoformat(h2_str) if pd.notna(h2_str) and h2_str else None
+                                    h1 = parse_fecha(h1_str) if pd.notna(h1_str) and h1_str else None
+                                    h2 = parse_fecha(h2_str) if pd.notna(h2_str) and h2_str else None
                                     t_retorno = (h2 - h1).total_seconds() / 60 if h1 and h2 else 0.0
 
                                     dict_hist_c1 = {
@@ -379,9 +377,8 @@ if tab3:
                                 st.session_state.df_activas.at[idx, "Estado"] = "En Despacho (Cargando)"
                                 
                                 guardar_datos_cloud(st.session_state.df_activas, "patentes_activas")
-                                st.success("✅ Posicionado en Despacho con éxito.")
+                                st.toast("✅ Posicionado en Despacho con éxito.", icon="📦")
                                 st.session_state.limpiar_despacho += 1
-                                time.sleep(1)
                                 st.rerun()
             else:
                 st.warning("⚠️ Esta patente no registra ingreso previo en Logística Inversa. Se abrirá el formulario de registro obligatorio.")
@@ -395,7 +392,7 @@ if tab3:
                         if not empresa_directa or not chofer_directo or not rut_directo:
                             st.error("❌ Todos los campos son obligatorios.")
                         elif len(rut_directo) < 8 or len(rut_directo) > 10:
-                            st.error("❌ El RUT debe tener entre 9 y 10 caracteres.")
+                            st.error("❌ El RUT debe tener entre 8 y 10 caracteres.")
                         else:
                             nuevo_registro = pd.DataFrame([{
                                 "Patente": patente_desp, "Empresa": empresa_directa, "Chofer": chofer_directo, "RUT": rut_directo,
@@ -405,8 +402,7 @@ if tab3:
                             }])
                             st.session_state.df_activas = pd.concat([st.session_state.df_activas, nuevo_registro], ignore_index=True)
                             guardar_datos_cloud(st.session_state.df_activas, "patentes_activas")
-                            st.success("✅ Vehículo ingresado al sistema. Digite de nuevo la patente para posicionar en Despacho.")
-                            time.sleep(1)
+                            st.toast("✅ Vehículo ingresado. Digite patente de nuevo.", icon="🚨")
                             st.rerun()
         elif len(patente_desp) > 0:
             st.caption("Escriba el largo exacto de la patente (6 dígitos).")
@@ -428,13 +424,18 @@ if tab4:
                     fila_viaje = st.session_state.df_activas[st.session_state.df_activas["Patente"] == patente_final].iloc[0].copy()
                     st.session_state.df_activas = st.session_state.df_activas[st.session_state.df_activas["Patente"] != patente_final]
                     
-                    h1 = datetime.datetime.fromisoformat(fila_viaje["H1_Llegada_Inversa"]) if pd.notna(fila_viaje["H1_Llegada_Inversa"]) and fila_viaje["H1_Llegada_Inversa"] else None
-                    h2 = datetime.datetime.fromisoformat(fila_viaje["H2_Salida_Inversa"]) if pd.notna(fila_viaje["H2_Salida_Inversa"]) and fila_viaje["H2_Salida_Inversa"] else None
-                    h3 = datetime.datetime.fromisoformat(fila_viaje["H3_Llegada_Despacho"]) if pd.notna(fila_viaje["H3_Llegada_Despacho"]) and fila_viaje["H3_Llegada_Despacho"] else ahora_actual
-                    h4 = ahora_actual
+                    h1 = parse_fecha(fila_viaje["H1_Llegada_Inversa"])
+                    h2 = parse_fecha(fila_viaje["H2_Salida_Inversa"])
+                    h3 = parse_fecha(fila_viaje["H3_Llegada_Despacho"])
+                    if h1: h1 = h1.replace(tzinfo=None)
+                    if h2: h2 = h2.replace(tzinfo=None)
+                    if h3: h3 = h3.replace(tzinfo=None)
+                    
+                    ahora_sin_tz = ahora_actual.replace(tzinfo=None)
+                    h4 = ahora_sin_tz
                     
                     t_retorno = (h2 - h1).total_seconds() / 60 if h1 and h2 else 0.0
-                    t_carga = (h4 - h3).total_seconds() / 60
+                    t_carga = (h4 - h3).total_seconds() / 60 if h3 else 0.0
                     
                     dict_hist_final = {
                         "Fecha": h4.strftime('%d-%m-%Y'), "Semana": f"Semana {h4.isocalendar()[1]}",
@@ -456,9 +457,8 @@ if tab4:
                     agregar_fila_historial_rapido(dict_hist_final)
                     guardar_datos_cloud(st.session_state.df_activas, "patentes_activas")
                     
-                    st.success("✅ Viaje archivado exitosamente.")
+                    st.toast("✅ Viaje archivado y liberado con éxito.", icon="🚪")
                     st.session_state.limpiar_salida += 1
-                    time.sleep(1)
                     st.rerun()
                 else:
                     st.error("Rellene todos los campos.")
