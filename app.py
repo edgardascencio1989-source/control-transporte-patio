@@ -487,21 +487,23 @@ if tab5:
                 ingresos_desp.append(h3.strftime('%H:%M:%S') if h3 else "N/A")
                 salidas_desp.append(h4.strftime('%H:%M:%S') if h4 else "N/A")
                 
-            # Cálculo seguro de tiempos
-                # T. Retorno
+           # 1. Creamos una versión de la hora actual SIN zona horaria para poder restar de forma segura
+                ahora_sin_tz = ahora_actual.replace(tzinfo=None)
+
+                # 2. Cálculo seguro de T. Retorno
                 if h1 and h2:
                     t_ret = (h2 - h1).total_seconds() / 60
                 elif h1:
-                    t_ret = (ahora_actual - h1).total_seconds() / 60
+                    t_ret = (ahora_sin_tz - h1).total_seconds() / 60
                 else:
                     t_ret = None
                 t_retornos.append(formatear_a_cronometro(t_ret) if t_ret is not None else "N/A")
                 
-                # T. Carga
+                # 3. Cálculo seguro de T. Carga
                 if h3 and h4:
                     t_carg = (h4 - h3).total_seconds() / 60
                 elif h3:
-                    t_carg = (ahora_actual - h3).total_seconds() / 60
+                    t_carg = (ahora_sin_tz - h3).total_seconds() / 60
                 else:
                     t_carg = None
                 t_cargas.append(formatear_a_cronometro(t_carg) if t_carg is not None else "N/A")
