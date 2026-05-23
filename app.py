@@ -263,7 +263,7 @@ if tab1:
             patente_inv = st.text_input("🚚 Patente del Camión", max_chars=6, help="Largo exacto de 6 caracteres").upper().strip()
             empresa_inv = st.text_input("🏢 Empresa de Transporte").upper().strip()
             chofer_inv = st.text_input("👤 Nombre y apellido del Chofer").upper().strip()
-            rut_inv = st.text_input("🆔 RUT del Chofer", max_chars=10, help="Mínimo 9 y máximo 10 caracteres").upper().strip()
+            rut_inv = st.text_input("🆔 RUT del Chofer", max_chars=10, help="Mínimo 8 y máximo 10 caracteres").upper().strip()
             
             if st.form_submit_button("💾 Registrar Llegada a Inversa"):
                 if not patente_inv or not empresa_inv or not chofer_inv or not rut_inv:
@@ -273,7 +273,7 @@ if tab1:
                 elif len(rut_inv) < 8 or len(rut_inv) > 10:
                     st.error(f"❌ El RUT ingresado tiene {len(rut_inv)} caracteres. Debe tener un mínimo de 8 y un máximo de 10 caracteres.")
                 elif not st.session_state.df_activas.empty and patente_inv in st.session_state.df_activas["Patente"].values:
-                    st.warning("⚠️ Esta patente ya registra una operación activa en patio.")
+                    st.warning("⚠️ Esta patente ya registra una operation activa en patio.")
                 else:
                     nuevo_registro = pd.DataFrame([{
                         "Patente": patente_inv, "Empresa": empresa_inv, "Chofer": chofer_inv, "RUT": rut_inv,
@@ -283,11 +283,9 @@ if tab1:
                     }])
                     st.session_state.df_activas = pd.concat([st.session_state.df_activas, nuevo_registro], ignore_index=True)
                     guardar_datos_cloud(st.session_state.df_activas, "patentes_activas")
-                    st.success("✅ Registrado con éxito.")
+                    st.toast("✅ Registrado con éxito en patio.", icon="🚚")
                     st.session_state.limpiar_inversa += 1
-                    time.sleep(1)
                     st.rerun()
-
 # =====================================================================
 # PESTAÑA 2: SALIDA INVERSA
 # =====================================================================
@@ -303,10 +301,8 @@ if tab2:
                 st.session_state.df_activas.at[idx, "H2_Salida_Inversa"] = ahora_actual.isoformat()
                 st.session_state.df_activas.at[idx, "Estado"] = "Esperando Despacho"
                 guardar_datos_cloud(st.session_state.df_activas, "patentes_activas")
-                st.success("✅ Salida confirmada.")
-                time.sleep(1)
+                st.toast("✅ Salida de Inversa liberada instantáneamente.", icon="📤")
                 st.rerun()
-
 # =====================================================================
 # PESTAÑA 3: INGRESO DESPACHO (CON FILTRADO ANTI-DUPLICADOS)
 # =====================================================================
