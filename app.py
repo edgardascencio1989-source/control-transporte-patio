@@ -18,107 +18,33 @@ BACKUP_ACTIVAS = "backup_patentes_activas.csv"
 BACKUP_HISTORIAL = "backup_historial_final.csv"
 
 # =====================================================================
-# MOTOR DE CONEXIÓN CON GOOGLE SHEETS (LECTURA DESDE STREAMLIT SECRETS)
+# MOTOR DE CONEXIÓN CON GOOGLE SHEETS (SECRETS + CACHÉ OPTIMIZADO)
 # =====================================================================
+@st.cache_resource
+def obtener_cliente_sheets():
+    import gspread
+    from google.oauth2.service_account import Credentials
+    
+    if "json_data" not in st.secrets:
+        st.error("❌ ERROR CRÍTICO: No se encontró 'json_data' en los Secrets.")
+        st.stop()
+        
+    creds_dict = json.loads(st.secrets["json_data"])
+    if "private_key" in creds_dict:
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+        
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+    return gspread.authorize(creds)
+
 def conectar_google_sheets(pestaña_nombre):
     try:
-        import gspread
-        from google.oauth2.service_account import Credentials
-        
-        # 1. Verificar si existen los secretos en Streamlit
-        if "json_data" not in st.secrets:
-            st.error("❌ ERROR CRÍTICO: No se encontró la variable 'json_data' en los Secrets de Streamlit. Revisa la pestaña Ajustes de tu App.")
-            st.stop()
-            return None
-            
-        # 2. Intentar decodificar el JSON guardado en Secrets
-        try:
-            creds_dict = json.loads(st.secrets["json_data"])
-        except Exception as json_err:
-            st.error(f"❌ ERROR DE FORMATO JSON: El texto guardado en Secrets no es válido. Detalles: {str(json_err)}")
-            st.stop()
-            return None
-        
-        # Corrección interna obligatoria para la clave privada
-        if "private_key" in creds_dict:
-            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
-            
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        
-        # Conexión nativa y segura usando la memoria interna protegida de Streamlit
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-        client = gspread.authorize(creds)
-        
-        try:
-            spreadsheet = client.open_by_key(SPREADSHEET_ID)
-        except Exception as spread_err:
-            st.error(f"❌ ERROR DE ACCESO: El bot ({creds_dict.get('client_email')}) no pudo entrar a la planilla. Detalles: {str(spread_err)}")
-            st.stop()
-            return None
-            
-        try:
-            sheet = spreadsheet.worksheet(pestaña_nombre)
-            return sheet
-        except Exception as work_err:
-            st.error(f"❌ ERROR DE PESTAÑA: Archivo abierto, pero no existe la pestaña '{pestaña_nombre}'. Detalles: {str(work_err)}")
-            st.stop()
-            return None
-            
+        client = obtener_cliente_sheets()
+        spreadsheet = client.open_by_key(SPREADSHEET_ID)
+        return spreadsheet.worksheet(pestaña_nombre)
     except Exception as e:
-        st.error(f"❌ ERROR GENERAL DE CONEXIÓN SEGURA: {str(e)}")
-        st.stop()
-        return None
-
-def cargar_datos_cloud(pestaña_nombre):
-    archivo_local = BACKUP_ACTIVAS if pestaña_nombre == "patentes_activas" else BACKUP_HISTORIAL
-    sheet = conectar_google_sheets(pestaña_nombre)
-    
-    cols_activas = [
-        "Patente", "Empresa", "Chofer", "RUT", "H1_Llegada_Inversa", 
-        "H2_Salida_Inversa", "H3_Llegada_Despacho", "H4_Salida_Despacho", 
-        "Ruta_Auditada", "Estado", "Chofer_2", "RUT_2"
-    ]
-    cols_hist = [
-        "Fecha", "Semana", "Mes", "Empresa", "Patente", "Chofer", "RUT", "Ruta Auditada",
-        "Ingreso Inversa", "Salida Inversa", "Ingreso Despacho", "Salida Despacho",
-        "T. Retorno (Descarga)", "T. Despacho (Carga)", "Minutos_Carga_Raw", "Tipo de Cierre",
-        "Chofer 2", "RUT Chofer 2"
-    ]
-    columnas_requeridas = cols_activas if pestaña_nombre == "patentes_activas" else cols_hist
-
-    df = None
-    
-    if sheet:
-        try:
-            records = sheet.get_all_records()
-            if records:
-                df = pd.DataFrame(records)
-        except Exception:
-            pass
-            
-    if df is None or df.empty:
-        if os.path.exists(archivo_local):
-            try:
-                df_local = pd.read_csv(archivo_local)
-                if not df_local.empty:
-                    df = df_local
-            except:
-                pass
-                
-    if df is None or df.empty:
-        df = pd.DataFrame(columns=columnas_requeridas)
-        
-    for col in columnas_requeridas:
-        if col not in df.columns:
-            df[col] = ""
-            
-    df.to_csv(archivo_local, index=False)
-    return df
-
-def guardar_datos_cloud(df, pestaña_nombre):
-    archivo_local = BACKUP_ACTIVAS if pestaña_nombre == "patentes_activas" else BACKUP_HISTORIAL
-    df.to_csv(archivo_local, index=False)
-    
+        st.error(f"❌ Error rápido de comunicación con la planilla: {str(e)}")
+        return None    
     sheet = conectar_google_sheets(pestaña_nombre)
     if sheet:
         try:
