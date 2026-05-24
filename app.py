@@ -622,6 +622,11 @@ if vista_url == "admin":
                     h2 = parse_fecha(fila_viaje["H2_Salida_Inversa"])
                     h3 = parse_fecha(fila_viaje["H3_Llegada_Despacho"])
                     
+                    # Removemos la zona horaria para que no choque al restar
+                    if h1: h1 = h1.replace(tzinfo=None)
+                    if h2: h2 = h2.replace(tzinfo=None)
+                    if h3: h3 = h3.replace(tzinfo=None)
+                    
                     ahora_forzado_sin_tz = ahora_actual.replace(tzinfo=None)
                     h4 = ahora_forzado_sin_tz
                     
@@ -664,7 +669,7 @@ if vista_url == "admin":
                 ])
                 guardar_datos_cloud(st.session_state.df_activas, "patentes_activas")
                 
-                st.success("🚨 Se han cerrado de forma forzada todos los procesos activos y se han archivado correctamente.")
+                st.toast("🚨 Se han cerrado de forma forzada todos los procesos activos.", icon="🚨")
                 time.sleep(1.5)
                 st.rerun()
             else:
