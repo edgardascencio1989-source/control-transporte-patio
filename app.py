@@ -281,20 +281,29 @@ if tab1:
             patente_inv = st.text_input("🚚 Patente del Camión", max_chars=6, help="Largo exacto de 6 caracteres").upper().strip()
             empresa_inv = st.text_input("🏢 Empresa de Transporte").upper().strip()
             chofer_inv = st.text_input("👤 Nombre y apellido del Chofer").upper().strip()
-            rut_inv = st.text_input("🆔 RUT del Chofer", max_chars=10, help="Mínimo 8 y máximo 10 caracteres").upper().strip()
+            rut_inv = st.text_input("🆔 RUT del Chofer", max_chars=12, help="Ejemplo: 12345678-9 o 12345678K").upper().strip()
             
             if st.form_submit_button("💾 Registrar Llegada a Inversa"):
+                import re
+                rut_limpio = rut_inv.upper().replace(".", "").replace(" ", "").strip()
+                rut_sin_guion = rut_limpio.replace("-", "")
+                
                 if not patente_inv or not empresa_inv or not chofer_inv or not rut_inv:
                     st.error("❌ Todos los campos son obligatorios.")
                 elif len(patente_inv) != 6:
                     st.error(f"❌ La patente ingresada tiene {len(patente_inv)} caracteres. Debe tener exactamente 6 caracteres.")
-                elif len(rut_inv) < 8 or len(rut_inv) > 10:
-                    st.error(f"❌ El RUT ingresado tiene {len(rut_inv)} caracteres. Debe tener un mínimo de 8 y un máximo de 10 caracteres.")
+                elif not re.match(r'^[0-9K\-]+$', rut_limpio):
+                    st.error("❌ El RUT solo puede contener números, guion y la letra K.")
+                elif len(rut_sin_guion) < 8 or len(rut_sin_guion) > 9:
+                    st.error(f"❌ El RUT es inválido. Debe tener entre 8 y 9 dígitos puros (ingresaste {len(rut_sin_guion)}).")
                 elif not st.session_state.df_activas.empty and patente_inv in st.session_state.df_activas["Patente"].values:
                     st.warning("⚠️ Esta patente ya registra una operation activa en patio.")
                 else:
+                    # Formateo automático: Inyecta el guion antes del último dígito
+                    rut_final = rut_sin_guion[:-1] + "-" + rut_sin_guion[-1]
+                    
                     nuevo_registro = pd.DataFrame([{
-                        "Patente": patente_inv, "Empresa": empresa_inv, "Chofer": chofer_inv, "RUT": rut_inv,
+                        "Patente": patente_inv, "Empresa": empresa_inv, "Chofer": chofer_inv, "RUT": rut_final,
                         "H1_Llegada_Inversa": ahora_actual.isoformat(), "H2_Salida_Inversa": "",
                         "H3_Llegada_Despacho": "", "H4_Salida_Despacho": "",
                         "Ruta_Auditada": "", "Estado": "En Logística Inversa", "Chofer_2": "", "RUT_2": ""
@@ -348,19 +357,26 @@ if tab3:
                         st.caption(f"👤 Conductor Original de Inversa: {fila['Chofer']} | RUT: {fila['RUT']}")
                         
                         chofer_f = st.text_input("👤 Nombre del Conductor en Despacho:", value=fila["Chofer"]).upper().strip()
-                        rut_f = st.text_input("🆔 RUT del Conductor en Despacho:", value=fila["RUT"], max_chars=10).upper().strip()
+                        rut_f = st.text_input("🆔 RUT del Conductor en Despacho:", value=fila["RUT"], max_chars=12).upper().strip()
                         
                         if st.form_submit_button("📥 Registrar Entrada a Carga"):
-                            if len(rut_f) < 8 or len(rut_f) > 10:
-                               st.error("❌ El RUT debe tener entre 8 y 10 caracteres.")
+                            import re
+                            r_limpio = rut_f.upper().replace(".", "").replace(" ", "").strip()
+                            r_sin_guion = r_limpio.replace("-", "")
+                            
+                            if not re.match(r'^[0-9K\-]+$', r_limpio):
+                                st.error("❌ El RUT solo puede contener números, guion y la letra K.")
+                            elif len(r_sin_guion) < 8 or len(r_sin_guion) > 9:
+                               st.error(f"❌ El RUT debe tener entre 8 y 9 dígitos puros (ingresaste {len(r_sin_guion)}).")
                             else:
+                                rut_final_f = r_sin_guion[:-1] + "-" + r_sin_guion[-1]
                                 idx = st.session_state.df_activas[st.session_state.df_activas["Patente"] == patente_desp].index[0]
                                 st.session_state.df_activas.at[idx, "Empresa"] = empresa_f
                                 
                                 c_original = str(fila["Chofer"]).upper().strip()
                                 r_original = str(fila["RUT"]).upper().strip()
                                 c_nuevo = chofer_f.upper().strip()
-                                r_nuevo = rut_f.upper().strip()
+                                r_nuevo = rut_final_f
 
                                 if c_nuevo != c_original or r_nuevo != r_original:
                                     h1_str = fila["H1_Llegada_Inversa"]
@@ -382,7 +398,7 @@ if tab3:
                                         "T. Despacho (Carga)": "N/A",
                                         "Minutos_Carga_Raw": round(t_retorno, 1),
                                         "Tipo de Cierre": "Cambio Conductor",
-                                        "Chofer 2": chofer_f, "RUT Chofer 2": rut_f
+                                        "Chofer 2": chofer_f, "RUT Chofer 2": rut_final_f
                                     }
                                     agregar_fila_historial_rapido(dict_hist_c1)
 
@@ -390,7 +406,7 @@ if tab3:
                                     st.session_state.df_activas.at[idx, "RUT_2"] = fila["RUT"]
                                 
                                 st.session_state.df_activas.at[idx, "Chofer"] = chofer_f
-                                st.session_state.df_activas.at[idx, "RUT"] = rut_f
+                                st.session_state.df_activas.at[idx, "RUT"] = rut_final_f
                                 st.session_state.df_activas.at[idx, "H3_Llegada_Despacho"] = ahora_actual.isoformat()
                                 st.session_state.df_activas.at[idx, "Estado"] = "En Despacho (Cargando)"
                                 
@@ -404,16 +420,23 @@ if tab3:
                     st.write("### 🚨 Formulario de Ingreso Directo a Patio")
                     empresa_directa = st.text_input("🏢 Empresa de Transporte").upper().strip()
                     chofer_directo = st.text_input("👤 Nombre y apellido del Chofer").upper().strip()
-                    rut_directo = st.text_input("🆔 RUT del Chofer", max_chars=10).upper().strip()
+                    rut_directo = st.text_input("🆔 RUT del Chofer", max_chars=12).upper().strip()
                     
                     if st.form_submit_button("💾 Registrar Ingreso Completo Directo"):
+                        import re
+                        rd_limpio = rut_directo.upper().replace(".", "").replace(" ", "").strip()
+                        rd_sin_guion = rd_limpio.replace("-", "")
+                        
                         if not empresa_directa or not chofer_directo or not rut_directo:
                             st.error("❌ Todos los campos son obligatorios.")
-                        elif len(rut_directo) < 8 or len(rut_directo) > 10:
-                            st.error("❌ El RUT debe tener entre 8 y 10 caracteres.")
+                        elif not re.match(r'^[0-9K\-]+$', rd_limpio):
+                            st.error("❌ El RUT solo puede contener números, guion y la letra K.")
+                        elif len(rd_sin_guion) < 8 or len(rd_sin_guion) > 9:
+                            st.error(f"❌ El RUT debe tener entre 8 y 9 dígitos puros (ingresaste {len(rd_sin_guion)}).")
                         else:
+                            rut_final_d = rd_sin_guion[:-1] + "-" + rd_sin_guion[-1]
                             nuevo_registro = pd.DataFrame([{
-                                "Patente": patente_desp, "Empresa": empresa_directa, "Chofer": chofer_directo, "RUT": rut_directo,
+                                "Patente": patente_desp, "Empresa": empresa_directa, "Chofer": chofer_directo, "RUT": rut_final_d,
                                 "H1_Llegada_Inversa": "", "H2_Salida_Inversa": "",
                                 "H3_Llegada_Despacho": "", "H4_Salida_Despacho": "",
                                 "Ruta_Auditada": "", "Estado": "Esperando Despacho", "Chofer_2": "", "RUT_2": ""
@@ -424,7 +447,6 @@ if tab3:
                             st.rerun()
         elif len(patente_desp) > 0:
             st.caption("Escriba el largo exacto de la patente (6 dígitos).")
-
 # =====================================================================
 # PESTAÑA 4: SALIDA DESPACHO
 # =====================================================================
