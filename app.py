@@ -93,6 +93,98 @@ def agregar_fila_historial_rapido(nueva_fila_dict):
 # =====================================================================
 # INICIALIZACIÓN DE ARCHIVOS
 # =====================================================================
+def cargar_datos_cloud(pestaña_nombre):
+    archivo_local = BACKUP_ACTIVAS if pestaña_nombre == "patentes_activas" else BACKUP_HISTORIAL
+    sheet = conectar_google_sheets(pestaña_nombre)
+    
+    cols_activas = [
+        "Patente", "Empresa", "Chofer", "RUT", "H1_Llegada_Inversa", 
+        "H2_Salida_Inversa", "H3_Llegada_Despacho", "H4_Salida_Despacho", 
+        "Ruta_Auditada", "Estado", "Chofer_2", "RUT_2"
+    ]
+    cols_hist = [
+        "Fecha", "Semana", "Mes", "Empresa", "Patente", "Chofer", "RUT", "Ruta Auditada",
+        "Ingreso Inversa", "Salida Inversa", "Ingreso Despacho", "Salida Despacho",
+        "T. Retorno (Descarga)", "T. Despacho (Carga)", "Minutos_Carga_Raw", "Tipo de Cierre",
+        "Chofer 2", "RUT Chofer 2"
+    ]
+    columnas_requeridas = cols_activas if pestaña_nombre == "patentes_activas" else cols_hist
+
+    df = None
+    
+    if sheet:
+        try:
+            records = sheet.get_all_records()
+            if records:
+                df = pd.DataFrame(records)
+        except Exception:
+            pass
+            
+    if df is None or df.empty:
+        if os.path.exists(archivo_local):
+            try:
+                df_local = pd.read_csv(archivo_local)
+                if not df_local.empty:
+                    df = df_local
+            except:
+                pass
+                
+    if df is None or df.empty:
+        df = pd.DataFrame(columns=columnas_requeridas)
+        
+    for col in columnas_requeridas:
+        if col not in df.columns:
+            df[col] = ""
+            
+    df.to_csv(archivo_local, index=False)
+    return df
+
+def guardar_datos_cloud(df, pestaña_nombre):
+    archivo_local = BACKUP_ACTIVAS if pestaña_nombre == "patentes_activas" else BACKUP_HISTORIAL
+    df.to_csv(archivo_local, index=False)
+    
+    sheet = conectar_google_sheets(pestaña_nombre)
+    if sheet:
+        try:
+            sheet.clear()
+            df_enviar = df.fillna("").astype(str)
+            valores_enviar = [df_enviar.columns.values.tolist()] + df_enviar.values.tolist()
+            sheet.update(valores_enviar)
+            return True
+        except Exception as e:
+            st.error(f"❌ Error crítico de Google Sheets al intentar guardar en '{pestaña_nombre}': {str(e)}")
+            st.stop()
+            return False
+    return False
+
+def agregar_fila_historial_rapido(nueva_fila_dict):
+    archivo_local = BACKUP_HISTORIAL
+    try:
+        if os.path.exists(archivo_local):
+            df_local = pd.read_csv(archivo_local)
+        else:
+            df_local = pd.DataFrame()
+        df_local = pd.concat([df_local, pd.DataFrame([nueva_fila_dict])], ignore_index=True)
+        df_local.to_csv(archivo_local, index=False)
+        st.session_state.df_historial = df_local
+    except:
+        pass
+
+    sheet = conectar_google_sheets("historial_final")
+    if sheet:
+        try:
+            cols_hist = [
+                "Fecha", "Semana", "Mes", "Empresa", "Patente", "Chofer", "RUT", "Ruta Auditada",
+                "Ingreso Inversa", "Salida Inversa", "Ingreso Despacho", "Salida Despacho",
+                "T. Retorno (Descarga)", "T. Despacho (Carga)", "Minutos_Carga_Raw", "Tipo de Cierre",
+                "Chofer 2", "RUT Chofer 2"
+            ]
+            valores_fila = [str(nueva_fila_dict.get(c, "")) for c in cols_hist]
+            sheet.append_row(valores_fila)
+            return True
+        except Exception as e:
+            st.error(f"❌ Error en grabación rápida: {str(e)}")
+    return False
 st.session_state.df_activas = cargar_datos_cloud("patentes_activas")
 st.session_state.df_historial = cargar_datos_cloud("historial_final")
 
